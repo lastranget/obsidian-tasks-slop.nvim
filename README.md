@@ -77,9 +77,9 @@ group by filename
 ```
 ````
 
-6. `<leader>tr` toggles between rendered results and raw edit view.
-7. `<leader>tF` opens the Snacks picker to search all tasks across your vault.
-8. `<leader>tc` starts the sequential create/edit wizard.
+6. `<leader>otr` toggles between rendered results and raw edit view.
+7. `<leader>otF` opens the Snacks picker to search all tasks across your vault.
+8. `<leader>otc` starts the sequential create/edit wizard.
 
 ## Task Format
 
@@ -126,11 +126,11 @@ Any line matching `[indent][list-marker] [status] description` is a task. Suppor
 | List item without checkbox | Adds `[ ]` |
 | Plain text | Converts to `- [ ] text` |
 
-### Create/Edit Wizard (`<leader>tc`)
+### Create/Edit Wizard (`<leader>otc`)
 
 Sequential Snacks.input prompts: Description → Priority (select) → Due date → Scheduled → Recurrence → Tags → save. Pre-fills when cursor is on an existing task.
 
-### Task Search (`<leader>tF`)
+### Task Search (`<leader>otF`)
 
 Opens Snacks picker with all vault tasks. Priority-colored, due-date badges, file source. Press enter to jump to the task's source file and line.
 
@@ -229,6 +229,8 @@ With the cursor on a rendered task line, the normal plugin commands operate on t
 - `:TasksToggleDone` — toggles the task in its source file, saves, re-renders.
 - `:TasksCycleStatus` — cycles status in source.
 - `:TasksSetPriority`, `:TasksSetDueDate`, etc. — same pattern.
+- `:TasksGoto` (default: `<leader>otg`) — jumps cursor to the task's source file and exact line.
+- `:TasksGotoSplit` (default: `<leader>otG`) — opens the source in a horizontal split, keeping the rendered dashboard visible in the original window.
 
 The source file on disk is always written as the original ```tasks...``` source; the rendered output exists only in the buffer while rendering is on.
 
@@ -262,16 +264,18 @@ require("nvim-tasks").setup({
   },
   keymaps = {                                 -- set any to false to disable
     toggle_done       = "<C-CR>",
-    toggle_render     = "<leader>tr",
-    create_task       = "<leader>tc",
-    set_priority      = "<leader>tp",
-    set_due_date      = "<leader>td",
-    set_scheduled     = "<leader>ts",
-    set_start_date    = "<leader>tS",
-    cycle_status      = "<leader>tx",
-    increase_priority = "<leader>t+",
-    decrease_priority = "<leader>t-",
-    search_tasks      = "<leader>tF",
+    toggle_render     = "<leader>otr",
+    create_task       = "<leader>otc",
+    set_priority      = "<leader>otp",
+    set_due_date      = "<leader>otd",
+    set_scheduled     = "<leader>ots",
+    set_start_date    = "<leader>otS",
+    cycle_status      = "<leader>otx",
+    increase_priority = "<leader>ot+",
+    decrease_priority = "<leader>ot-",
+    search_tasks      = "<leader>otF",
+    goto_source       = "<leader>otg",
+    goto_source_split = "<leader>otG",
   },
 })
 ```
@@ -295,6 +299,8 @@ require("nvim-tasks").setup({
 | `:TasksIncreasePriority` | Bump up |
 | `:TasksDecreasePriority` | Bump down |
 | `:TasksSearch` | Snacks picker across vault tasks |
+| `:TasksGoto` | Jump to task's source file and exact line |
+| `:TasksGotoSplit` | Open task's source in a horizontal split |
 | `:TasksQuery <query>` | Ad-hoc query (`;` as line separator) |
 
 ## Architecture

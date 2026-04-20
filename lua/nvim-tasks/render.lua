@@ -433,22 +433,84 @@ function M.origin_at_line(bufnr, lnum_1indexed)
 end
 
 -- ---------------------------------------------------------------------------
+-- Goto source: jump from a rendered task line to its origin in the source
+-- ---------------------------------------------------------------------------
+
+--- Notify helper that prefers Snacks.notify, falling back to vim.notify.
+local function notify(msg, level)
+  local sok, Snacks = pcall(require, "snacks")
+  if sok and Snacks and Snacks.notify then
+    Snacks.notify(msg, { level = level or "info", title = "nvim-tasks" })
+  else
+    local lvl = level == "warn" and vim.log.levels.WARN
+      or (level == "error" and vim.log.levels.ERROR)
+      or vim.log.levels.INFO
+    vim.notify("[nvim-tasks] " .. msg, lvl)
+  end
+end
+
+--- Internal: resolve the origin at the cursor or return nil with a notice.
+---
+--- Returns the origin table `{ file_path, line_number }` for the task on
+--- the current (or specified) line, or nil if the cursor isn't on a
+--- rendered task line. When nil, notifies the user so the command doesn't
+--- silently do nothing.
+local function resolve_origin_at(bufnr, lnum)
+  bufnr = bufnr or vim.api.nvim_get_current_buf()
+  lnum  = lnum  or vim.api.nvim_win_get_cursor(0)[1]
+  if not M.is_rendered(bufnr) then
+    notify("Not a rendered view — cursor is not on a rendered task", "warn")
+    return nil
+  end
+  local origin = M.origin_at_line(bufnr, lnum)
+  if not origin or not origin.file_path then
+    notify("No task on this line", "warn")
+    return nil
+  end
+  return origin
+end
+
+--- Jump to a task's source file and exact line, replacing the current
+--- window's buffer.
+---
+--- The cursor lands on column 0 of the task's line and the view is
+--- centered (`zz`). If the source file isn't already loaded, it's
+--- opened via `:edit`.
+function M.goto_source(bufnr, lnum)
+  local origin = resolve_origin_at(bufnr, lnum)
+  if not origin then return end
+  -- Use :edit so the command goes through normal buffer-load autocmds
+  -- (filetype detection, treesitter, etc.).
+  vim.cmd("edit " .. vim.fn.fnameescape(origin.file_path))
+  -- Clamp line_number to the buffer's actual length in case the file
+  -- changed since we rendered. Defensive but cheap.
+  local last = vim.api.nvim_buf_line_count(0)
+  local target = math.min(math.max(origin.line_number, 1), last)
+  vim.api.nvim_win_set_cursor(0, { target, 0 })
+  vim.cmd("normal! zz")
+end
+
+--- Like `goto_source` but opens the source in a horizontal split below,
+--- leaving the rendered dashboard visible in the original window.
+function M.goto_source_split(bufnr, lnum)
+  local origin = resolve_origin_at(bufnr, lnum)
+  if not origin then return end
+  -- `split <file>` creates the split and loads the file in one step.
+  -- `belowright` places the new window below the current one, which is
+  -- what most users expect (and matches vim's default for `:split`).
+  vim.cmd("belowright split " .. vim.fn.fnameescape(origin.file_path))
+  local last = vim.api.nvim_buf_line_count(0)
+  local target = math.min(math.max(origin.line_number, 1), last)
+  vim.api.nvim_win_set_cursor(0, { target, 0 })
+  vim.cmd("normal! zz")
+end
+
+-- ---------------------------------------------------------------------------
 -- Toggle, refresh, state queries
 -- ---------------------------------------------------------------------------
 
 function M.toggle(bufnr)
   bufnr = bufnr or vim.api.nvim_get_current_buf()
-  local sok, Snacks = pcall(require, "snacks")
-  local function notify(msg, level)
-    if sok and Snacks and Snacks.notify then
-      Snacks.notify(msg, { level = level, title = "nvim-tasks" })
-    else
-      local lvl = level == "warn" and vim.log.levels.WARN
-        or (level == "error" and vim.log.levels.ERROR)
-        or vim.log.levels.INFO
-      vim.notify("[nvim-tasks] " .. msg, lvl)
-    end
-  end
   if M.is_rendered(bufnr) then
     M.clear_buffer(bufnr)
     notify("Rendering OFF (edit mode)", "info")

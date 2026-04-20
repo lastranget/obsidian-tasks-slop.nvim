@@ -30,11 +30,12 @@ M.defaults = {
   auto_done_date = true,
   render_on_load = true,
   keymaps = {
-    toggle_done = "<C-CR>", toggle_render = "<leader>tr", create_task = "<leader>tc",
-    set_priority = "<leader>tp", set_due_date = "<leader>td", set_scheduled = "<leader>ts",
-    set_start_date = "<leader>tS", cycle_status = "<leader>tx",
-    increase_priority = "<leader>t+", decrease_priority = "<leader>t-",
-    search_tasks = "<leader>tF",
+    toggle_done = "<C-CR>", toggle_render = "<leader>otr", create_task = "<leader>otc",
+    set_priority = "<leader>otp", set_due_date = "<leader>otd", set_scheduled = "<leader>ots",
+    set_start_date = "<leader>otS", cycle_status = "<leader>otx",
+    increase_priority = "<leader>ot+", decrease_priority = "<leader>ot-",
+    search_tasks = "<leader>otF",
+    goto_source = "<leader>otg", goto_source_split = "<leader>otG",
   },
   highlights = {
     overdue = "DiagnosticError", due_today = "DiagnosticWarn", done = "Comment",

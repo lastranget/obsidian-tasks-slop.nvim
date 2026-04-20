@@ -752,3 +752,86 @@ For anyone upgrading from the session-10 zip:
   strategy.
 - **Saving a rendered buffer writes the original source to disk.** The file
   on disk never contains rendered output.
+
+---
+
+## Sessions 13-14: navigation commands + keymap prefix rebase
+
+### [render.lua] `TasksGoto` and `TasksGotoSplit`
+
+Two new navigation commands that leverage the existing `origin_at_line`
+extmark lookup:
+
+- `render.goto_source()` — reads the origin at the cursor, opens the source
+  file via `:edit`, positions the cursor at exact `line_number`, centers
+  with `zz`. Replaces the current window's buffer.
+- `render.goto_source_split()` — same, but `belowright split` keeps the
+  rendered dashboard visible in the original window.
+
+Both clamp `line_number` to the target buffer's actual line count (in case
+the source file changed since the render), and emit a clear notification
+via Snacks.notify / vim.notify when the cursor isn't on a rendered task
+line, rather than silently doing nothing.
+
+Rationale: `gf` on a `[[wiki-link]]` already takes the user to the source
+file (and with obsidian.nvim, to the heading), but neither takes them to
+the exact task line. The origin is already tracked; exposing it as a
+command is a ~40-line addition that makes the navigation story feel
+complete.
+
+Shared `notify` helper moved up to module scope; deduplicated the inline
+one previously inside `M.toggle`.
+
+### [config.lua / init.lua / docs] Keymap prefix rebase `<leader>t` → `<leader>ot`
+
+User preference: all default keymaps now use `<leader>ot` prefix instead
+of `<leader>t`. Rationale: `<leader>t` is a common prefix for testing,
+terminal, or tab commands in many users' existing setups; `<leader>ot`
+("obsidian tasks") is more specific and less likely to collide.
+
+Affects every default binding:
+
+    toggle_done          <C-CR>       (unchanged — not prefixed)
+    toggle_render        <leader>tr   → <leader>otr
+    create_task          <leader>tc   → <leader>otc
+    set_priority         <leader>tp   → <leader>otp
+    set_due_date         <leader>td   → <leader>otd
+    set_scheduled        <leader>ts   → <leader>ots
+    set_start_date       <leader>tS   → <leader>otS
+    cycle_status         <leader>tx   → <leader>otx
+    increase_priority    <leader>t+   → <leader>ot+
+    decrease_priority    <leader>t-   → <leader>ot-
+    search_tasks         <leader>tF   → <leader>otF
+    goto_source          <leader>tg   → <leader>otg
+    goto_source_split    <leader>tG   → <leader>otG
+
+README and helpfile updated in all three places they documented keymaps
+(quickstart section, Configuration keymap block, and Commands table).
+
+### New test coverage
+
+| Suite                       | Tests | Purpose                                          |
+|-----------------------------|-------|--------------------------------------------------|
+| `smoke_goto.lua`            | 14    | goto_source and goto_source_split semantics      |
+
+Covers: cursor lands on exact file + line; split creates one new window,
+original stays; goto on banner/heading line is a no-op with notification;
+goto in non-rendered buffer is a no-op with notification; line clamping
+when source file shrunk after render.
+
+### Test coverage at end of session 14
+
+| Suite                              | Tests |
+|------------------------------------|-------|
+| test_filter.lua      (Lua 5.1)     |  56   |
+| test_task.lua        (Lua 5.1)     |  24   |
+| test_task2.lua       (Lua 5.1)     |  34   |
+| test_sort.lua        (Lua 5.1)     |   9   |
+| test_recurrence.lua  (Lua 5.1)     |  25   |
+| smoke.lua            (real Nvim)   |  40   |
+| smoke2.lua           (real Nvim)   |  42   |
+| smoke_integration.lua (real Nvim)  |  13   |
+| smoke_workflow.lua   (real Nvim)   |  84   |
+| smoke_buffer_render.lua (real Nvim)|  35   |
+| smoke_goto.lua       (real Nvim)   |  14   |
+| **Total**                          | **376** |

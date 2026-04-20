@@ -53,6 +53,8 @@ function M._setup_commands()
   cmd("TasksIncreasePriority", function() toggle.increase_priority() end, { desc = "Increase priority" })
   cmd("TasksDecreasePriority", function() toggle.decrease_priority() end, { desc = "Decrease priority" })
   cmd("TasksSearch", function() ui.search_tasks() end, { desc = "Search vault tasks (Snacks picker)" })
+  cmd("TasksGoto", function() render.goto_source() end, { desc = "Jump to task source file and line" })
+  cmd("TasksGotoSplit", function() render.goto_source_split() end, { desc = "Open task source in horizontal split" })
   cmd("TasksQuery", function(args) M._run_query(args.args) end, { desc = "Run ad-hoc query", nargs = "+" })
 end
 
@@ -82,6 +84,8 @@ function M._setup_keymaps()
       map(km.increase_priority, "<cmd>TasksIncreasePriority<cr>", "Tasks: Increase Priority")
       map(km.decrease_priority, "<cmd>TasksDecreasePriority<cr>", "Tasks: Decrease Priority")
       map(km.search_tasks, "<cmd>TasksSearch<cr>", "Tasks: Search Vault")
+      map(km.goto_source, "<cmd>TasksGoto<cr>", "Tasks: Goto source")
+      map(km.goto_source_split, "<cmd>TasksGotoSplit<cr>", "Tasks: Goto source (split)")
     end,
   })
 end

@@ -58,17 +58,20 @@ COMMANDS                                             *nvim-tasks-commands*
 :TasksIncreasePriority  Bump priority up
 :TasksDecreasePriority  Bump priority down
 :TasksSearch            Search vault tasks (snacks picker)
+:TasksGoto              Jump to task's source file and exact line
+:TasksGotoSplit         Open task's source in a horizontal split
 :TasksQuery {query}     Ad-hoc query (use ; as line separator)
 
 ==============================================================================
 KEYMAPS                                               *nvim-tasks-keymaps*
 
-  <C-CR>       Toggle done          <leader>tr   Toggle render
-  <leader>tc   Create/edit wizard   <leader>tp   Set priority
-  <leader>td   Set due date         <leader>ts   Set scheduled
-  <leader>tS   Set start date       <leader>tx   Cycle status
-  <leader>t+   Increase priority    <leader>t-   Decrease priority
-  <leader>tF   Search vault tasks
+  <C-CR>        Toggle done          <leader>otr   Toggle render
+  <leader>otc   Create/edit wizard   <leader>otp   Set priority
+  <leader>otd   Set due date         <leader>ots   Set scheduled
+  <leader>otS   Set start date       <leader>otx   Cycle status
+  <leader>ot+   Increase priority    <leader>ot-   Decrease priority
+  <leader>otF   Search vault tasks   <leader>otg   Goto source file
+                                     <leader>otG   Goto source (split)
 
 ==============================================================================
 QUERY LANGUAGE                                          *nvim-tasks-query*
@@ -276,6 +279,8 @@ Interactivity: ~
         :TasksSetDueDate           sets due date in source
         :TasksIncreasePriority     bumps priority in source
         :TasksDecreasePriority     lowers priority in source
+        :TasksGoto                 jumps cursor to source file + exact line
+        :TasksGotoSplit            opens source in a horizontal split
 
     All operate invisibly on the source buffer and file. After the change
     is saved, every open rendered buffer is refreshed.
