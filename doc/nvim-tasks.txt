@@ -60,6 +60,7 @@ COMMANDS                                             *nvim-tasks-commands*
 :TasksSearch            Search vault tasks (snacks picker)
 :TasksGoto              Jump to task's source file and exact line
 :TasksGotoSplit         Open task's source in a horizontal split
+:TasksUndo              Undo the last rendered-dispatch edit (single slot, per-session)
 :TasksQuery {query}     Ad-hoc query (use ; as line separator)
 
 ==============================================================================
@@ -71,7 +72,7 @@ KEYMAPS                                               *nvim-tasks-keymaps*
   <leader>otS   Set start date       <leader>otx   Cycle status
   <leader>ot+   Increase priority    <leader>ot-   Decrease priority
   <leader>otF   Search vault tasks   <leader>otg   Goto source file
-                                     <leader>otG   Goto source (split)
+  <leader>otu   Undo last action     <leader>otG   Goto source (split)
 
 ==============================================================================
 QUERY LANGUAGE                                          *nvim-tasks-query*
@@ -284,6 +285,20 @@ Interactivity: ~
 
     All operate invisibly on the source buffer and file. After the change
     is saved, every open rendered buffer is refreshed.
+
+Undo: ~
+
+    :TasksUndo (default <leader>otu) reverses the last rendered-dispatch
+    edit — the cross-file change that `u` in the rendered buffer can't
+    reach. Single-slot, per-session: only the most recent dispatched
+    mutation is remembered.
+
+    Same-buffer edits (editing a source `.md` directly) use Neovim's
+    native `u` — :TasksUndo is only for the cross-file dispatch case.
+
+    If the source file has changed since the edit (another process wrote
+    to it, you edited it manually), :TasksUndo refuses rather than
+    potentially corrupt the file. Fix the conflict, then retry.
 
 Editing the query: ~
 

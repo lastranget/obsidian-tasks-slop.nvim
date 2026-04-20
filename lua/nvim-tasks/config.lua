@@ -36,6 +36,7 @@ M.defaults = {
     increase_priority = "<leader>ot+", decrease_priority = "<leader>ot-",
     search_tasks = "<leader>otF",
     goto_source = "<leader>otg", goto_source_split = "<leader>otG",
+    undo_last = "<leader>otu",
   },
   highlights = {
     overdue = "DiagnosticError", due_today = "DiagnosticWarn", done = "Comment",

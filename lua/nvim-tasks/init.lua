@@ -55,6 +55,7 @@ function M._setup_commands()
   cmd("TasksSearch", function() ui.search_tasks() end, { desc = "Search vault tasks (Snacks picker)" })
   cmd("TasksGoto", function() render.goto_source() end, { desc = "Jump to task source file and line" })
   cmd("TasksGotoSplit", function() render.goto_source_split() end, { desc = "Open task source in horizontal split" })
+  cmd("TasksUndo", function() require("nvim-tasks.undo").undo_last() end, { desc = "Undo last rendered-dispatch edit" })
   cmd("TasksQuery", function(args) M._run_query(args.args) end, { desc = "Run ad-hoc query", nargs = "+" })
 end
 
@@ -86,6 +87,7 @@ function M._setup_keymaps()
       map(km.search_tasks, "<cmd>TasksSearch<cr>", "Tasks: Search Vault")
       map(km.goto_source, "<cmd>TasksGoto<cr>", "Tasks: Goto source")
       map(km.goto_source_split, "<cmd>TasksGotoSplit<cr>", "Tasks: Goto source (split)")
+      map(km.undo_last, "<cmd>TasksUndo<cr>", "Tasks: Undo last action")
     end,
   })
 end

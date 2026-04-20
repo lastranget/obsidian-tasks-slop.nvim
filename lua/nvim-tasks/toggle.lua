@@ -72,6 +72,22 @@ local function commit_source_edit(src_buf)
   require("nvim-tasks.render").refresh_all()
 end
 
+--- Like `commit_source_edit`, but ALSO records undo state so `:TasksUndo`
+--- can reverse this edit. Caller provides the pre-edit and post-edit line
+--- ranges so the undo module can validate the file hasn't changed and
+--- restore the original lines on undo.
+---
+--- @param src_buf      integer    source buffer number (already mutated)
+--- @param line_start   integer    0-indexed row where mutation began
+--- @param before_lines string[]   lines BEFORE the mutation
+--- @param after_lines  string[]   lines AFTER the mutation (0..N)
+local function dispatch_commit_with_undo(src_buf, line_start, before_lines, after_lines)
+  local undo = require("nvim-tasks.undo")
+  local file_path = vim.api.nvim_buf_get_name(src_buf)
+  undo.record_mutation(file_path, line_start, before_lines, after_lines)
+  commit_source_edit(src_buf)
+end
+
 -- ---------------------------------------------------------------------------
 -- Public commands — each checks for rendered dispatch first
 -- ---------------------------------------------------------------------------
@@ -97,8 +113,10 @@ function M.toggle_done(bufnr, lnum)
 
   local task = task_mod.parse(line)
   if task then
-    M._toggle_task(tb, tl, task)
-    if dispatched then commit_source_edit(tb) end
+    local after_lines = M._toggle_task(tb, tl, task)
+    if dispatched then
+      dispatch_commit_with_undo(tb, tl - 1, { line }, after_lines or {})
+    end
     return
   end
 
@@ -111,29 +129,34 @@ function M.toggle_done(bufnr, lnum)
   if symbol then
     local s = config.get_status(symbol)
     local ns = s and s.next or (symbol == " " and "x" or " ")
-    vim.api.nvim_buf_set_lines(tb, tl - 1, tl, false, { (line:gsub("%[.%]", "[" .. ns .. "]", 1)) })
-    if dispatched then commit_source_edit(tb) end
+    local new_line = line:gsub("%[.%]", "[" .. ns .. "]", 1)
+    vim.api.nvim_buf_set_lines(tb, tl - 1, tl, false, { new_line })
+    if dispatched then dispatch_commit_with_undo(tb, tl - 1, { line }, { new_line }) end
     return
   end
   local li = line:match("^(%s*[-*+]%s+)") or line:match("^(%s*%d+[.)]+%s+)")
   if li then
-    vim.api.nvim_buf_set_lines(tb, tl - 1, tl, false, { li .. "[ ] " .. line:sub(#li + 1) })
-    if dispatched then commit_source_edit(tb) end
+    local new_line = li .. "[ ] " .. line:sub(#li + 1)
+    vim.api.nvim_buf_set_lines(tb, tl - 1, tl, false, { new_line })
+    if dispatched then dispatch_commit_with_undo(tb, tl - 1, { line }, { new_line }) end
     return
   end
   local ind = line:match("^(%s*)")
-  vim.api.nvim_buf_set_lines(tb, tl - 1, tl, false, { ind .. "- [ ] " .. line:sub(#ind + 1) })
-  if dispatched then commit_source_edit(tb) end
+  local new_line = ind .. "- [ ] " .. line:sub(#ind + 1)
+  vim.api.nvim_buf_set_lines(tb, tl - 1, tl, false, { new_line })
+  if dispatched then dispatch_commit_with_undo(tb, tl - 1, { line }, { new_line }) end
 end
 
 function M._toggle_task(bufnr, lnum, task)
   local cfg = config.get()
   local was = task_mod.is_done(task)
+  local after_lines
   if was then
     task.status_symbol  = " "
     task.done_date      = nil
     task.cancelled_date = nil
-    vim.api.nvim_buf_set_lines(bufnr, lnum - 1, lnum, false, { task_mod.serialize(task) })
+    after_lines = { task_mod.serialize(task) }
+    vim.api.nvim_buf_set_lines(bufnr, lnum - 1, lnum, false, after_lines)
   else
     local today = date_mod.today_str()
     if task.recurrence then
@@ -155,19 +178,23 @@ function M._toggle_task(bufnr, lnum, task)
       else
         if keep then table.insert(lines, done_line) end
       end
-      vim.api.nvim_buf_set_lines(bufnr, lnum - 1, lnum, false, lines)
+      after_lines = lines
+      vim.api.nvim_buf_set_lines(bufnr, lnum - 1, lnum, false, after_lines)
     else
       task.status_symbol = "x"
       if cfg.auto_done_date then task.done_date = today end
       if task.on_completion == "delete" then
-        vim.api.nvim_buf_set_lines(bufnr, lnum - 1, lnum, false, {})
+        after_lines = {}
+        vim.api.nvim_buf_set_lines(bufnr, lnum - 1, lnum, false, after_lines)
         require("nvim-tasks.vault").invalidate()
-        return
+        return after_lines
       end
-      vim.api.nvim_buf_set_lines(bufnr, lnum - 1, lnum, false, { task_mod.serialize(task) })
+      after_lines = { task_mod.serialize(task) }
+      vim.api.nvim_buf_set_lines(bufnr, lnum - 1, lnum, false, after_lines)
     end
   end
   require("nvim-tasks.vault").invalidate()
+  return after_lines
 end
 
 -- ---------------------------------------------------------------------------
@@ -189,9 +216,14 @@ function M.cycle_status(bufnr, lnum)
   elseif old_done and not new_done then
     task.done_date = nil
   end
-  vim.api.nvim_buf_set_lines(tb, tl - 1, tl, false, { task_mod.serialize(task) })
+  local new_line = task_mod.serialize(task)
+  vim.api.nvim_buf_set_lines(tb, tl - 1, tl, false, { new_line })
 
-  if dispatched then commit_source_edit(tb) else require("nvim-tasks.vault").invalidate() end
+  if dispatched then
+    dispatch_commit_with_undo(tb, tl - 1, { line }, { new_line })
+  else
+    require("nvim-tasks.vault").invalidate()
+  end
 end
 
 -- ---------------------------------------------------------------------------
@@ -215,8 +247,9 @@ local function mutate_priority(bufnr, lnum, mutator)
   local task = task_mod.parse(line)
   if not task then return end
   mutator(task)
-  vim.api.nvim_buf_set_lines(tb, tl - 1, tl, false, { task_mod.serialize(task) })
-  if dispatched then commit_source_edit(tb) end
+  local new_line = task_mod.serialize(task)
+  vim.api.nvim_buf_set_lines(tb, tl - 1, tl, false, { new_line })
+  if dispatched then dispatch_commit_with_undo(tb, tl - 1, { line }, { new_line }) end
 end
 
 function M.set_priority(bufnr, lnum, priority)
@@ -248,8 +281,9 @@ function M.set_date(bufnr, lnum, field, value)
   local task = task_mod.parse(line)
   if not task then return end
   task[field] = (value ~= "") and value or nil
-  vim.api.nvim_buf_set_lines(tb, tl - 1, tl, false, { task_mod.serialize(task) })
-  if dispatched then commit_source_edit(tb) end
+  local new_line = task_mod.serialize(task)
+  vim.api.nvim_buf_set_lines(tb, tl - 1, tl, false, { new_line })
+  if dispatched then dispatch_commit_with_undo(tb, tl - 1, { line }, { new_line }) end
 end
 
 return M

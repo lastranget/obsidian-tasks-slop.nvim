@@ -835,3 +835,115 @@ when source file shrunk after render.
 | smoke_buffer_render.lua (real Nvim)|  35   |
 | smoke_goto.lua       (real Nvim)   |  14   |
 | **Total**                          | **376** |
+
+---
+
+## Sessions 15-16: `:TasksUndo`
+
+### Motivation
+
+Neovim's native `u` undoes buffer-local history. For rendered-dispatch
+edits — where a plugin command on a rendered task writes to a DIFFERENT
+source file — `u` in the rendered buffer can't reach the cross-file
+change. `:TasksUndo` closes that gap.
+
+### Design
+
+Single-slot, per-session. Only the most recent rendered-dispatch
+mutation is remembered. Second consecutive undo is a no-op. Not
+persisted across Neovim restarts (deliberately — would require shadafile
+or sidecar state for minimal benefit).
+
+Same-buffer edits (source `.md` file open and edited directly) are NOT
+captured — they already have `u`.
+
+### Architecture: `undo.lua`
+
+New module with a single-slot store `M._last_mutation = nil | {
+  file_path, line_start (0-indexed), before_lines, after_lines }`. Set
+by the dispatcher in `toggle.lua`, read by `M.undo_last()`.
+
+On `undo_last`:
+  1. No slot → notify, no-op.
+  2. File missing → notify, no-op.
+  3. Load source buffer (bufadd + bufload if not open).
+  4. Clear any render state on the source buffer.
+  5. Validate the current lines at [line_start, line_start + #after_lines)
+     match `after_lines`. If not, refuse (file changed underneath us).
+  6. Replace post-state lines with pre-state lines.
+  7. Silent noautocmd write, vault.invalidate(), render.refresh_all().
+  8. Clear the slot.
+
+### Integration: `toggle.lua`
+
+Each mutating function (`toggle_done`, `cycle_status`, `mutate_priority`,
+`set_date`) captures the original line text BEFORE mutating, then calls
+`dispatch_commit_with_undo(src_buf, line_start_0indexed, before_lines,
+after_lines)` when dispatched. The helper wraps the existing
+`commit_source_edit` and adds a `undo.record_mutation` call.
+
+`_toggle_task` is the tricky case — it produces 1 line normally, 2 lines
+for recurrence (done instance + new instance), or 0 lines for
+`on_completion = delete`. Refactored to RETURN `after_lines` so callers
+can pass it to `dispatch_commit_with_undo`.
+
+### Conflict detection
+
+If the user (or another process) writes to the source file between the
+plugin edit and the undo, the line content at `line_start` no longer
+matches `after_lines`. Undo refuses with a clear notification rather
+than overwrite user changes.
+
+The slot is NOT cleared on refusal — user can resolve the conflict and
+retry. (Auto-clearing would feel like silent data loss.)
+
+### Test coverage
+
+`smoke_undo.lua` — 27 checks across 11 sections:
+
+  1. toggle_done undo restores source byte-for-byte
+  2. Second consecutive undo is a no-op
+  3. Empty-slot undo is a no-op with notification
+  4. cycle_status undo
+  5. increase_priority undo
+  6. set_date undo
+  7. Recurrence: toggle produces 2 lines, undo restores single line
+  8. on_completion=delete: toggle removes line, undo re-inserts
+  9. Rendered view refreshes after undo (task reappears in `not done`)
+  10. Undo refuses when source file manually changed
+  11. Non-dispatched edits leave slot empty
+
+### Test-environment gotchas discovered
+
+Two issues caught in test harness (not the plugin):
+
+1. **Stale swap files** from prior crashed runs caused Neovim to prompt
+   for recovery on bufload, appearing as a hang. Fix: test init now
+   disables swap (`swapfile=false, backup=false, writebackup=false`).
+
+2. **Loaded source buffers** persisted across test sections — when a
+   later section rewrote the file on disk, Neovim noticed and prompted
+   "file changed on disk, write anyway?". Fix: `setup_dashboard` wipes
+   all loaded buffers before each section; the conflict-detection test
+   explicitly wipes the source buffer before simulating an external
+   write.
+
+Neither affects production use.
+
+### Test coverage at end of session 16
+
+| Suite                              | Tests |
+|------------------------------------|-------|
+| test_filter.lua      (Lua 5.1)     |  56   |
+| test_task.lua        (Lua 5.1)     |  24   |
+| test_task2.lua       (Lua 5.1)     |  34   |
+| test_sort.lua        (Lua 5.1)     |   9   |
+| test_recurrence.lua  (Lua 5.1)     |  25   |
+| smoke.lua            (real Nvim)   |  40   |
+| smoke2.lua           (real Nvim)   |  42   |
+| smoke_integration.lua (real Nvim)  |  13   |
+| smoke_workflow.lua   (real Nvim)   |  84   |
+| smoke_buffer_render.lua (real Nvim)|  35   |
+| smoke_goto.lua       (real Nvim)   |  14   |
+| smoke_undo.lua       (real Nvim)   |  27   |
+| **Total**                          | **403** |

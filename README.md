@@ -231,8 +231,18 @@ With the cursor on a rendered task line, the normal plugin commands operate on t
 - `:TasksSetPriority`, `:TasksSetDueDate`, etc. — same pattern.
 - `:TasksGoto` (default: `<leader>otg`) — jumps cursor to the task's source file and exact line.
 - `:TasksGotoSplit` (default: `<leader>otG`) — opens the source in a horizontal split, keeping the rendered dashboard visible in the original window.
+- `:TasksUndo` (default: `<leader>otu`) — reverses the last dispatched edit. Single-slot, per-session. See the Undo section below.
 
 The source file on disk is always written as the original ```tasks...``` source; the rendered output exists only in the buffer while rendering is on.
+
+### Undo
+
+`:TasksUndo` reverses the last **rendered-dispatch** edit — the one where your toggle/priority/date command wrote to a source file you weren't looking at. Neovim's native `u` can't reach those edits (it operates on the current buffer's history, not a different file's), so this fills the gap.
+
+- **Single-slot, per-session.** Only the most recent dispatched mutation is remembered; running `:TasksUndo` twice in a row is a no-op after the first.
+- **Same-buffer edits** (editing a source `.md` file directly) use Neovim's native `u` — `:TasksUndo` is only for the cross-file dispatch case.
+- **Conflict detection.** If the source file has changed since the edit (another process wrote to it, you edited it manually, git pulled), `:TasksUndo` refuses rather than risk corruption. Fix the conflict, retry.
+- **Handles recurrence and delete-on-completion.** Toggling a recurring task adds a new instance and marks the old one done (two lines from one); undo restores the single original line. Tasks with `🏁 delete` that get removed on completion are re-inserted on undo.
 
 ### Toggling and editing
 
@@ -276,6 +286,7 @@ require("nvim-tasks").setup({
     search_tasks      = "<leader>otF",
     goto_source       = "<leader>otg",
     goto_source_split = "<leader>otG",
+    undo_last         = "<leader>otu",
   },
 })
 ```
@@ -301,6 +312,7 @@ require("nvim-tasks").setup({
 | `:TasksSearch` | Snacks picker across vault tasks |
 | `:TasksGoto` | Jump to task's source file and exact line |
 | `:TasksGotoSplit` | Open task's source in a horizontal split |
+| `:TasksUndo` | Undo the last rendered-dispatch edit (single-slot, per-session) |
 | `:TasksQuery <query>` | Ad-hoc query (`;` as line separator) |
 
 ## Architecture
