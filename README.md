@@ -19,7 +19,7 @@ Built by auditing the original TypeScript source. Parsing, serialization, urgenc
 
 ```lua
 {
-  "your-username/nvim-tasks",
+  "lastranget/obsidian-tasks-slop.nvim",
   dependencies = {
     "nvim-lua/plenary.nvim",
     "folke/snacks.nvim",
