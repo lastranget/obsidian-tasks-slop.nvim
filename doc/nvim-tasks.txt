@@ -1,0 +1,262 @@
+*nvim-tasks.txt*  Obsidian Tasks plugin for Neovim
+
+Dependencies: plenary.nvim, snacks.nvim
+Integrates with: obsidian.nvim, render-markdown.nvim
+License: MIT
+
+==============================================================================
+CONTENTS                                             *nvim-tasks-contents*
+
+  Setup ....................................... |nvim-tasks-setup|
+  Commands .................................... |nvim-tasks-commands|
+  Keymaps ..................................... |nvim-tasks-keymaps|
+  Query Language .............................. |nvim-tasks-query|
+    Filters ................................... |nvim-tasks-filters|
+    Sorting ................................... |nvim-tasks-sorting|
+    Grouping .................................. |nvim-tasks-grouping|
+    Layout .................................... |nvim-tasks-layout|
+  Task Syntax ................................. |nvim-tasks-syntax|
+  Integrations ................................ |nvim-tasks-integrations|
+
+==============================================================================
+SETUP                                                   *nvim-tasks-setup*
+
+>lua
+  require("nvim-tasks").setup({
+    vault_paths = {},  -- auto-detects from obsidian.nvim if left empty
+  })
+<
+
+Full option list lives in README.md; common ones:
+
+    vault_paths                list of absolute paths to scan for tasks
+    auto_done_date             (bool) add ✅ date when toggling done
+    recurrence_position        "above" | "below" — where to place the new
+                                 recurrence instance relative to the done line
+                                 (default: "above", matching Obsidian Tasks)
+    global_query               string — prepended to every query
+    emojis                     override default emoji symbols
+    statuses                   table of custom status definitions
+    highlights                 override highlight groups
+
+==============================================================================
+COMMANDS                                             *nvim-tasks-commands*
+
+:TasksToggleDone        Toggle task done (handles all line types)
+:TasksCycleStatus       Cycle status symbols through config.statuses
+:TasksCreate            Sequential wizard (snacks.nvim)
+:TasksSetPriority       Priority picker (snacks.nvim)
+:TasksSetDueDate        Due date prompt (snacks.nvim)
+:TasksSetScheduled      Scheduled date prompt
+:TasksSetStartDate      Start date prompt
+:TasksSetStatus         Status picker
+:TasksToggleRender      Toggle query block rendering
+:TasksRender            Force render
+:TasksClearRender       Clear virtual text
+:TasksRefresh           Invalidate cache, re-render
+:TasksIncreasePriority  Bump priority up
+:TasksDecreasePriority  Bump priority down
+:TasksSearch            Search vault tasks (snacks picker)
+:TasksQuery {query}     Ad-hoc query (use ; as line separator)
+
+==============================================================================
+KEYMAPS                                               *nvim-tasks-keymaps*
+
+  <C-CR>       Toggle done          <leader>tr   Toggle render
+  <leader>tc   Create/edit wizard   <leader>tp   Set priority
+  <leader>td   Set due date         <leader>ts   Set scheduled
+  <leader>tS   Set start date       <leader>tx   Cycle status
+  <leader>t+   Increase priority    <leader>t-   Decrease priority
+  <leader>tF   Search vault tasks
+
+==============================================================================
+QUERY LANGUAGE                                          *nvim-tasks-query*
+
+Queries live inside ```tasks code blocks. Each line is one instruction;
+`#` lines are comments. A trailing single `\` continues the next line;
+`\\` is a literal trailing backslash (not a continuation).
+
+FILTERS                                               *nvim-tasks-filters*
+
+Status ~
+    done
+    not done
+    status.type is {type}          TODO|DONE|IN_PROGRESS|ON_HOLD|CANCELLED|
+    status.type is not {type}      NON_TASK|EMPTY (case-insensitive)
+    status.name includes {text}
+    status.name does not include {text}
+
+Dates ~
+    For the fields: due, scheduled, starts, created, done, cancelled, happens
+
+    {field} on {date}              shorthand: {field} {date} (ISO only)
+    {field} before {date}
+    {field} after {date}
+    {field} on or before {date}    alias: {field} in or before {date}
+    {field} on or after {date}     alias: {field} in or after {date}
+    {field} in {range}             e.g. "in this week", "in last month",
+                                   or explicit "in 2026-01-01 2026-03-31"
+    has {field} date
+    no {field} date
+    {field} date is invalid
+
+    Dates accept: YYYY-MM-DD, today, tomorrow, yesterday, +Nd, -Nd, +Nw,
+    -Nw, +Nm, -Nm, +Ny, -Ny
+
+Priority ~
+    priority [is] [above|below|not] {level}     levels: lowest, low, none,
+                                                medium, high, highest
+    has priority
+    no priority
+
+Text (description, path, filename, folder, root, heading, recurrence, ~
+id, status.name) ~
+    {field} includes {text}
+    {field} does not include {text}
+    {field} regex matches /{pattern}[/{flags}]
+    {field} regex does not match /{pattern}[/{flags}]
+
+    Patterns are Lua patterns, not JavaScript regex. Only the `i` flag is
+    recognised (case-insensitive). For simple substring search, prefer
+    `includes`/`does not include`.
+
+Tags ~
+    has tags               no tags
+    tag includes {text}    tag does not include {text}
+    tag regex matches /{pattern}[/{flags}]
+
+Dependencies ~
+    has id                 no id
+    has depends on         no depends on
+    is blocking            is not blocking
+    is blocked             is not blocked
+
+Other ~
+    is recurring           is not recurring
+    exclude sub-items      (keeps top-level items, drops indented children;
+                           callout-aware — `> - [ ] x` is "top-level in
+                           callout" and passes)
+
+Boolean ~
+    (f1) AND (f2)
+    (f1) OR  (f2)
+    (f1) XOR (f2)
+    NOT (f1)
+    (f1) AND NOT (f2)
+
+    Arbitrary nesting and chaining supported. Leaf filters must be wrapped
+    in `()` or `""`. Binary operators are left-associative; parenthesise
+    explicitly when mixing.
+
+SORTING                                               *nvim-tasks-sorting*
+
+    sort by {field} [reverse]
+
+Fields: due, scheduled, start, created, done, cancelled, happens, priority,
+urgency, description, path, filename, heading, status, status.name,
+status.type, recurring, tag, tag {N}, id, random
+
+`sort by random` is stable within a day. `sort by description` strips
+leading Markdown (`**bold**`, `*italic*`, `==highlight==`, `[[link|alias]]`)
+before comparing.
+
+Queries without explicit `sort by` auto-sort by status.type, urgency, due,
+priority, path (matching Obsidian Tasks' Sort.defaultSorters).
+
+GROUPING                                             *nvim-tasks-grouping*
+
+    group by {field}
+
+Fields: filename, folder, root, path, backlink, heading, priority, status,
+status.name, status.type, recurring, recurrence, due, scheduled, start,
+created, done, cancelled, happens, tags, id, urgency
+
+`group by backlink` emits full Markdown links:
+`[[file#heading|file > heading]]` or `[[file]]` (no heading) or
+`"Unknown Location"` (no file path) — clickable in Obsidian.
+
+LAYOUT                                                 *nvim-tasks-layout*
+
+    short mode             Hide emoji labels next to fields
+    full mode              (default) Show full field values
+    hide {field}           Suppress a field from rendered output
+    show {field}           Force a field visible (overrides global defaults)
+    limit {N} [tasks]      Cap total rendered tasks to N
+    limit groups to {N}    Cap tasks per group to N
+    explain                Show the query itself above the rendered output
+    ignore global query    Opt-out of cfg.global_query for this block
+
+Hideable fields: priority, recurrence rule, on completion, start date,
+scheduled date, due date, created date, done date, cancelled date, tags,
+id, depends on, backlink, path, task count
+
+`show urgency` adds ⚡{score} to each task.
+
+==============================================================================
+TASK SYNTAX                                            *nvim-tasks-syntax*
+
+Any line matching `[indent][list-marker] [status] description` is a task:
+
+    - [ ] Write tests                        (plain)
+    * [ ] Fix bug 🔽 📅 2026-04-30           (with priority + due)
+    1. [ ] First numbered item               (numbered markers: `1.`, `1)`)
+    > - [ ] Task inside a callout            (blockquote/callout support)
+    > > - [ ] Nested callout task
+    - [▸] Custom symbol task                 (any Unicode codepoint)
+
+Metadata emoji (trailing, any order):
+
+    ⏫🔺🔼🔽⏬     priority (high, highest, medium, low, lowest)
+    📅 2026-01-01   due date
+    ⏳ 2026-01-01   scheduled date
+    🛫 2026-01-01   start date
+    ➕ 2026-01-01   created date
+    ✅ 2026-01-01   done date
+    ❌ 2026-01-01   cancelled date
+    🔁 every day    recurrence rule
+    🏁 delete       on completion (delete | keep)
+    🆔 task-id      task ID (used for dependencies)
+    ⛔ id1,id2      depends-on IDs
+    ^abc123         block link (at end of line)
+    #tag            hashtags (anywhere in description)
+
+Recurrence rules (subset of Obsidian Tasks' rrule grammar): ~
+
+    every day
+    every N days/weeks/months/years
+    every Monday|Tuesday|... (+ 3-letter abbrevs)
+    every January|February|... DD
+    every January on the DD
+    every weekday             (Mon-Fri)
+    any of the above + " when done"
+
+Full RFC 5545 is not supported (Obsidian wraps the `rrule` JS library).
+The subset above covers the common cases.
+
+==============================================================================
+INTEGRATIONS                                    *nvim-tasks-integrations*
+
+obsidian.nvim ~
+    Vault path is auto-detected in preference order:
+        1. explicit config.vault_paths
+        2. Obsidian.dir                     (set by obsidian.nvim's setup)
+        3. Obsidian.workspace.root
+        4. Obsidian.workspace.path
+        5. vim.fn.getcwd()
+
+render-markdown.nvim ~
+    Both plugins render `tasks` code blocks. To avoid overlap, add `tasks`
+    to render-markdown's `code.disable` list: >lua
+
+    require("render-markdown").setup({
+      code = { disable = { "tasks" } },
+    })
+<
+    If you don't, nvim-tasks emits a one-time warning (Snacks.notify if
+    available, else vim.notify).
+
+snacks.nvim ~
+    Required for the create wizard, pickers, date prompts, and
+    notifications. Plain vim.notify is used as a fallback where possible.
+
+ vim:tw=78:ts=8:ft=help:norl:
