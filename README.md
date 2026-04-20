@@ -190,22 +190,53 @@ Hideable: `priority`, `recurrence rule`, `on completion`, `start date`, `schedul
 
 ## Rendering
 
-By default, rendered output appears below each `tasks` block and the source stays visible. This keeps cursor navigation predictable — you can move through and edit query source in place — and works on every Neovim version.
+When rendering is on, each `tasks` block's source is **replaced** in the buffer with the query's results as real markdown text. The rendered output is navigable (cursor lands on it like any other line), clickable (wiki-link backlinks jump to source with `gf` or obsidian.nvim), and interactive (`:TasksToggleDone` and other commands on a rendered task line operate on the source file).
 
-`:TasksToggleRender` flips between rendered and raw edit view.
+### What gets rendered
 
-### Strategy option
+Given this in your note:
 
-`render_strategy` (default `"inline"`) controls how rendered output is placed:
-
-- **`"inline"`** — keeps the source visible; places virt_lines below the closing fence with a subtle border overlay on the fence lines. Works on every Neovim version and handles cursor navigation gracefully.
-- **`"conceal"`** — hides the block entirely using the `conceal_lines` extmark and places rendered output above where the block used to be. Only works on Neovim 0.11+ with `:setlocal conceallevel=2` (or `3`). Looks cleaner, but Neovim reveals concealed lines when the cursor is on them by default (`concealcursor` empty), so output flickers as you navigate into the block. Opt in only if you're comfortable editing the query source through a `:TasksToggleRender` toggle.
-
-```lua
-require("nvim-tasks").setup({
-  render_strategy = "inline",  -- default; use "conceal" for hide-on-0.11
-})
+```markdown
+```tasks
+not done
+group by priority
 ```
+```
+
+The block is replaced with:
+
+```markdown
+*── 218 tasks ──*
+
+#### Priority: high
+- [ ] High-priority task ⏫ 📅 2026-04-25 [[source-note#heading]]
+- [ ] Another ⏫ [[other-note]]
+
+#### Priority: medium
+- [ ] Medium task 🔼 [[source-note]]
+
+*── end ──*
+```
+
+- **Group headings are level-4 (`####`)** so your existing treesitter fold-expr picks them up — each group folds under its heading automatically. No extra fold config needed.
+- **Task lines are real markdown** (`- [ ] desc ⏫ 📅 date [[file#heading]]`). render-markdown.nvim styles them just like any other task in your vault, so the visual is consistent.
+- **Backlinks are Obsidian wiki-links.** `gf`, obsidian.nvim's follow-link, and any other Markdown-aware navigation jumps to the source file and heading.
+
+### Interactivity
+
+With the cursor on a rendered task line, the normal plugin commands operate on that task's **source file**, not the rendered view:
+
+- `:TasksToggleDone` — toggles the task in its source file, saves, re-renders.
+- `:TasksCycleStatus` — cycles status in source.
+- `:TasksSetPriority`, `:TasksSetDueDate`, etc. — same pattern.
+
+The source file on disk is always written as the original ```tasks...``` source; the rendered output exists only in the buffer while rendering is on.
+
+### Toggling and editing
+
+`:TasksToggleRender` flips between rendered and raw views. To edit the query source itself, toggle rendering off, edit the fenced block, then toggle back on — your changes are reflected immediately.
+
+Saving (`:w`) while rendered is safe: the file on disk will contain your original query source, never the rendered output. After save, the buffer re-renders automatically so you stay in the same view.
 
 ## Configuration
 
@@ -219,7 +250,6 @@ require("nvim-tasks").setup({
   auto_created_date = true,
   auto_done_date = true,
   render_on_load = true,
-  render_strategy = "inline",                 -- "inline" or "conceal" (see Rendering)
   emoji_aliases = { due = { "📆", "🗓" }, scheduled = { "⌛" } },
   statuses = {
     { symbol = " ", name = "Todo",        next = "x", type = "TODO" },

@@ -124,17 +124,8 @@ function M._setup_autocmds()
     end, 100)
   end
 
-  vim.api.nvim_create_autocmd("BufWritePost", {
-    group = group, pattern = "*.md",
-    callback = function(ev)
-      vault.invalidate()
-      if render.is_rendered(ev.buf) then
-        vim.defer_fn(function()
-          if vim.api.nvim_buf_is_valid(ev.buf) then render.render_buffer(ev.buf) end
-        end, 50)
-      end
-    end,
-  })
+  -- Save protection (BufWritePre/BufWritePost) lives in render.lua now,
+  -- self-registering on module load. See render.lua's `_save_augroup`.
 end
 
 function M._run_query(query_str)

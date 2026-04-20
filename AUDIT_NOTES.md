@@ -603,3 +603,152 @@ closing fence, which is where a reader's eye naturally expects results.
 | smoke_workflow.lua   (real Nvim)  | 84    |
 | smoke_render.lua     (real Nvim)  |  7    |
 | **Total**                         | **334** |
+
+---
+
+## Sessions 11–12: buffer-replacement rendering architecture
+
+A substantial architectural change, prompted by two user requirements that
+surfaced in real use:
+
+1. **Rendered output must be navigable** — cursor j/k across rendered tasks,
+   not skip over them.
+2. **Rendered output must be interactive** — `:TasksToggleDone` on a
+   rendered task line should toggle that task, re-rendering to reflect.
+3. **Visual must match render-markdown.nvim** — rendered tasks should look
+   the same as any other task in the markdown buffer.
+
+All three requirements demand the same architecture: render output as real
+buffer lines, not virtual text.
+
+### [render.lua] Complete rewrite — buffer-replacement
+
+Each ```tasks``` block's source lines are REPLACED in the buffer with
+real markdown text. render-markdown.nvim styles them consistently with
+other tasks in the buffer.
+
+Output format:
+
+    *── 3 tasks ──*                             (italic count banner)
+
+    #### Priority: high                         (level-4 heading = foldable)
+    - [ ] Task desc ⏫ 📅 2026-04-20 [[src#H]]  (real task line + wiki-link)
+
+    #### Priority: medium
+    - [ ] Another 🔼 [[src]]
+
+    *── end ──*
+
+`####` group headings integrate with the user's existing treesitter
+`foldexpr` — each group folds naturally without extra config.
+
+Wiki-links `[[file#heading]]` are real text — `gf` and obsidian.nvim's
+follow-link both jump to source.
+
+State: module-level `M._state[bufnr]` table (not buffer variables —
+msgpack serialization rejects sparse tables, and `task_origins` is sparse
+since most output lines aren't tasks). BufWipeout autocmd cleans up.
+
+Each rendered task line records its origin via an indexed entry in the
+block's `task_origins` table: `task_origins[offset_within_block] =
+{ file_path, line_number }`. Used by `origin_at_line(buf, lnum)` to
+dispatch edits to the source file.
+
+Block positions tracked via anchor extmarks (not raw line numbers) so
+edits elsewhere in the buffer don't lose track of them.
+
+### [render.lua] Save protection
+
+`BufWritePre` (clear-to-source) + `BufWritePost` (re-render) autocmds
+live inside render.lua itself as self-registering on module load — not
+in `_setup_autocmds`. This matters because a caller loading render.lua
+outside the plugin's setup() still gets save protection. Bug surfaced
+in `smoke_buffer_render.lua` when the first run of the save-protection
+test failed: the autocmds weren't wired up in isolated test mode.
+
+Transient flag `M._was_rendered_for_save[bufnr]` bridges the Pre/Post
+pair since `clear_buffer` removes the buffer from `M._state` between
+them.
+
+After save, every OTHER open rendered buffer is also refreshed — a
+task change in `foo.md` might appear in a dashboard note rendered in
+another buffer.
+
+### [toggle.lua] Rendered-view dispatch
+
+Every mutation command (`toggle_done`, `cycle_status`, `set_priority`,
+`increase_priority`, `decrease_priority`, `set_date`) now checks for
+rendered-buffer dispatch at the top:
+
+  1. `resolve(bufnr, lnum)` calls `render.origin_at_line` to check
+     whether the current line is a rendered task.
+  2. If yes: load the origin file (via `bufadd` + `bufload`, invisible),
+     resolve to source buffer/line, apply the mutation there.
+  3. `commit_source_edit(src_buf)` writes the source file with `silent
+     noautocmd write` (so we don't re-enter the Pre/Post chain), then
+     invalidates the vault cache and calls `render.refresh_all()`.
+
+Command-specific wrappers share a `mutate_priority` helper that takes
+a pure function from task → nil, keeping each command's logic minimal.
+
+### [config.lua] Removed obsolete `render_strategy` key
+
+The "inline" vs "conceal" strategy distinction is gone — buffer-
+replacement is the one path. Removed the config key entirely rather
+than silently ignoring it, since the strategies it selected between no
+longer exist.
+
+### New test coverage
+
+| Suite                       | Tests | Purpose                                          |
+|-----------------------------|-------|--------------------------------------------------|
+| `smoke_buffer_render.lua`   | 35    | Buffer-replacement rendering + toggle-dispatch   |
+
+Covers: rendered layout (`####` headings, real `- [ ]` task lines, wiki-
+link backlinks, italic count banner, NO virt_lines extmarks); clear
+restores exact original source; toggle off → edit source → toggle on
+reflects edits; `origin_at_line` returns `{file_path, line_number}` for
+task lines and nil for non-task lines (headings, banners, blanks);
+`toggle_done` on rendered task edits source file byte-for-byte (verified
+by re-reading the file from disk); toggled task no longer appears as
+`[ ]` in the re-rendered view (cross-buffer refresh); `:w` writes
+original ```tasks``` source to disk, NOT rendered output.
+
+### [smoke_render.lua] Retired
+
+The session-10 smoke_render.lua tested "inline" strategy virt_lines
+placement and "conceal" strategy conceal_lines placement. Neither
+applies in the new architecture. Its scenarios are subsumed by
+smoke_buffer_render.lua, so the file was deleted rather than rewritten.
+
+### Test coverage at end of session 12
+
+| Suite                             | Tests |
+|-----------------------------------|-------|
+| test_filter.lua      (Lua 5.1)    |  56   |
+| test_task.lua        (Lua 5.1)    |  24   |
+| test_task2.lua       (Lua 5.1)    |  34   |
+| test_sort.lua        (Lua 5.1)    |   9   |
+| test_recurrence.lua  (Lua 5.1)    |  25   |
+| smoke.lua            (real Nvim)  |  40   |
+| smoke2.lua           (real Nvim)  |  42   |
+| smoke_integration.lua (real Nvim) |  13   |
+| smoke_workflow.lua   (real Nvim)  |  84   |
+| smoke_buffer_render.lua (real Nvim)| 35   |
+| **Total**                         | **362** |
+
+### Visible behavior differences from earlier versions
+
+For anyone upgrading from the session-10 zip:
+
+- **Rendered output is now real buffer text, not virt_lines.** Buffer line
+  count changes when rendered vs. not rendered.
+- **Source is HIDDEN when rendered.** Previously the ```tasks``` block stayed
+  visible with virt_lines below it. Now it's replaced entirely.
+- **Plugin commands on rendered tasks edit the source file.** Previously
+  they'd either error (no-op because the rendered line wasn't a real task
+  line) or operate on the rendered buffer directly (which was meaningless).
+- **`render_strategy` config key is gone.** Buffer-replacement is the only
+  strategy.
+- **Saving a rendered buffer writes the original source to disk.** The file
+  on disk never contains rendered output.

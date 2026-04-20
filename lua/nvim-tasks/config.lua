@@ -29,11 +29,6 @@ M.defaults = {
   auto_created_date = true,
   auto_done_date = true,
   render_on_load = true,
-  -- Rendering strategy: "inline" (default, works everywhere) keeps the
-  -- source visible and places output below the closing fence as virt_lines.
-  -- "conceal" hides the block entirely on Nvim 0.11+ but has cursor-reveal
-  -- edge cases — opt in only if you're comfortable with those tradeoffs.
-  render_strategy = "inline",
   keymaps = {
     toggle_done = "<C-CR>", toggle_render = "<leader>tr", create_task = "<leader>tc",
     set_priority = "<leader>tp", set_due_date = "<leader>td", set_scheduled = "<leader>ts",

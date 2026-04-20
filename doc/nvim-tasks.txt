@@ -35,10 +35,6 @@ Full option list lives in README.md; common ones:
     recurrence_position        "above" | "below" — where to place the new
                                  recurrence instance relative to the done line
                                  (default: "above", matching Obsidian Tasks)
-    render_strategy            "inline" | "conceal" — see |nvim-tasks-render|.
-                                 Default "inline" keeps source visible with
-                                 results below; "conceal" hides block on Nvim
-                                 0.11+ but has cursor-reveal tradeoffs.
     global_query               string — prepended to every query
     emojis                     override default emoji symbols
     statuses                   table of custom status definitions
@@ -241,29 +237,66 @@ The subset above covers the common cases.
 ==============================================================================
 RENDERING                                            *nvim-tasks-render*
 
-By default, rendered query output appears below each ```tasks block as
-virtual lines and the block source stays visible. Cursor navigation is
-natural — you can scroll through and edit queries in place.
+When rendering is on, each ```tasks block's source is replaced in the
+buffer with the query's rendered output as real markdown text. The
+rendered output is navigable (the cursor lands on it like any other line),
+clickable (wiki-links jump to source), and interactive (plugin commands
+on a rendered task line operate on the source file).
 
-Strategies (`render_strategy` option): ~
+Rendered output layout: ~
 
-    "inline"    Default. Works on every Neovim version. Source stays
-                visible; output appears below the closing fence with a
-                subtle border overlay on the fence lines themselves.
+    *── 218 tasks ──*              ← italic count banner
 
-    "conceal"   Opt-in on Nvim 0.11+ with `:setlocal conceallevel=2`.
-                Hides the block entirely via `conceal_lines` extmark and
-                places rendered output above. Cleaner look, but Neovim's
-                default `concealcursor` is empty, so entering the block
-                with the cursor reveals it — navigation causes flicker.
-                Recommended only when paired with a `:TasksToggleRender`
-                keymap for editing.
+    #### Priority: high            ← level-4 heading (folds via fold-expr)
+    - [ ] Task desc ⏫ 📅 2026-04-20 [[source-note#heading]]
+    - [ ] Another ⏫ [[other-note]]
+
+    #### Priority: medium
+    - [ ] Task 🔼 [[source-note]]
+
+    *── end ──*
+
+Key properties: ~
+
+    * `####` group headings so `foldexpr=v:lua.vim.treesitter.foldexpr()`
+      folds each section without extra config.
+    * Task lines are real markdown — render-markdown.nvim styles them the
+      same as any other task line in the buffer.
+    * Backlinks are `[[file#heading]]` wiki-links — `gf` or obsidian.nvim
+      follow them to the source file.
+
+Interactivity: ~
+
+    With the cursor on a rendered task line, the plugin commands operate
+    on the task's ORIGIN file, not the rendered view:
+
+        :TasksToggleDone           toggles task in source, saves, re-renders
+        :TasksCycleStatus          cycles status in source
+        :TasksSetPriority          sets priority in source
+        :TasksSetDueDate           sets due date in source
+        :TasksIncreasePriority     bumps priority in source
+        :TasksDecreasePriority     lowers priority in source
+
+    All operate invisibly on the source buffer and file. After the change
+    is saved, every open rendered buffer is refreshed.
+
+Editing the query: ~
+
+    To edit the query itself (change `not done` to `done`, etc.), toggle
+    rendering off with |:TasksToggleRender|, edit the fenced ```tasks
+    block, then toggle back on. The new render reflects your edits.
+
+Saving: ~
+
+    `:w` while rendered is safe: the file on disk contains the original
+    ```tasks...``` source, never the rendered output. After the write,
+    the buffer re-renders automatically.
 
 Lazy-loading: ~
 
-    If you lazy-load with `ft = "markdown"`, the plugin sweeps
-    already-open markdown buffers at setup() time, so the initial render
-    fires even though `BufRead` has already passed.
+    If you lazy-load with `ft = "markdown"`, the plugin sweeps already-
+    open markdown buffers at setup() time, so the initial render fires
+    even when BufRead has already passed.
 
 Useful commands: |:TasksRender|, |:TasksToggleRender|, |:TasksRefresh|.
 
