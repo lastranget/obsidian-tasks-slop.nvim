@@ -16,6 +16,7 @@ CONTENTS                                             *nvim-tasks-contents*
     Grouping .................................. |nvim-tasks-grouping|
     Layout .................................... |nvim-tasks-layout|
   Task Syntax ................................. |nvim-tasks-syntax|
+  Rendering ................................... |nvim-tasks-render|
   Integrations ................................ |nvim-tasks-integrations|
 
 ==============================================================================
@@ -34,6 +35,10 @@ Full option list lives in README.md; common ones:
     recurrence_position        "above" | "below" — where to place the new
                                  recurrence instance relative to the done line
                                  (default: "above", matching Obsidian Tasks)
+    render_strategy            "inline" | "conceal" — see |nvim-tasks-render|.
+                                 Default "inline" keeps source visible with
+                                 results below; "conceal" hides block on Nvim
+                                 0.11+ but has cursor-reveal tradeoffs.
     global_query               string — prepended to every query
     emojis                     override default emoji symbols
     statuses                   table of custom status definitions
@@ -232,6 +237,35 @@ Recurrence rules (subset of Obsidian Tasks' rrule grammar): ~
 
 Full RFC 5545 is not supported (Obsidian wraps the `rrule` JS library).
 The subset above covers the common cases.
+
+==============================================================================
+RENDERING                                            *nvim-tasks-render*
+
+By default, rendered query output appears below each ```tasks block as
+virtual lines and the block source stays visible. Cursor navigation is
+natural — you can scroll through and edit queries in place.
+
+Strategies (`render_strategy` option): ~
+
+    "inline"    Default. Works on every Neovim version. Source stays
+                visible; output appears below the closing fence with a
+                subtle border overlay on the fence lines themselves.
+
+    "conceal"   Opt-in on Nvim 0.11+ with `:setlocal conceallevel=2`.
+                Hides the block entirely via `conceal_lines` extmark and
+                places rendered output above. Cleaner look, but Neovim's
+                default `concealcursor` is empty, so entering the block
+                with the cursor reveals it — navigation causes flicker.
+                Recommended only when paired with a `:TasksToggleRender`
+                keymap for editing.
+
+Lazy-loading: ~
+
+    If you lazy-load with `ft = "markdown"`, the plugin sweeps
+    already-open markdown buffers at setup() time, so the initial render
+    fires even though `BufRead` has already passed.
+
+Useful commands: |:TasksRender|, |:TasksToggleRender|, |:TasksRefresh|.
 
 ==============================================================================
 INTEGRATIONS                                    *nvim-tasks-integrations*

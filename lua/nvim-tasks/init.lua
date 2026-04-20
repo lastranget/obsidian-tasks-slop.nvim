@@ -93,17 +93,35 @@ function M._setup_autocmds()
   local group = vim.api.nvim_create_augroup("NvimTasksRender", { clear = true })
 
   if config.get().render_on_load then
-    vim.api.nvim_create_autocmd({ "BufRead", "BufEnter" }, {
-      group = group, pattern = "*.md",
+    -- Trigger render on multiple events so lazy-loading doesn't miss the
+    -- initial buffer. Under `ft = "markdown"` lazy.nvim loads the plugin
+    -- AFTER BufRead has already fired, so we need FileType too, plus a
+    -- one-shot sweep of already-open buffers at setup() time.
+    local function maybe_render(buf)
+      if not vim.api.nvim_buf_is_valid(buf) then return end
+      for _, l in ipairs(vim.api.nvim_buf_get_lines(buf, 0, -1, false)) do
+        if l:match("^%s*```tasks") then render.render_buffer(buf); return end
+      end
+    end
+
+    vim.api.nvim_create_autocmd({ "BufRead", "BufEnter", "FileType" }, {
+      group = group, pattern = { "*.md", "markdown" },
       callback = function(ev)
-        vim.defer_fn(function()
-          if not vim.api.nvim_buf_is_valid(ev.buf) then return end
-          for _, l in ipairs(vim.api.nvim_buf_get_lines(ev.buf, 0, -1, false)) do
-            if l:match("^%s*```tasks") then render.render_buffer(ev.buf); return end
-          end
-        end, 100)
+        -- Defer so the buffer is fully loaded and treesitter etc. are ready.
+        vim.defer_fn(function() maybe_render(ev.buf) end, 100)
       end,
     })
+
+    -- Catch already-open markdown buffers at setup() time (the usual
+    -- lazy-load case: file was opened first, plugin loaded second).
+    vim.defer_fn(function()
+      for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+        if vim.api.nvim_buf_is_loaded(buf) then
+          local name = vim.api.nvim_buf_get_name(buf)
+          if name:match("%.md$") then maybe_render(buf) end
+        end
+      end
+    end, 100)
   end
 
   vim.api.nvim_create_autocmd("BufWritePost", {

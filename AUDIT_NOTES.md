@@ -531,3 +531,75 @@ imported `parse_sorter` directly.
 | smoke_integration.lua (real Nvim)| 13    |
 | smoke_workflow.lua  (real Nvim)  | 84    |
 | **Total**                        | **327** |
+
+---
+
+## Session 10: render bugs surfaced in real use
+
+Two bugs surfaced when the plugin was installed on Tom's system and opened on
+a real note with `tasks` blocks. Both were tightly coupled to how the plugin
+is lazy-loaded and how Neovim's `conceal_lines` extmark feature interacts
+with cursor movement.
+
+### [init.lua] Lazy-load autocmd race — blocks didn't render on open
+
+The old autocmd listened for `BufRead`/`BufEnter` on `*.md`. But with lazy.nvim
+using `ft = "markdown"`, the plugin loads *after* `BufRead` has already fired
+for the buffer that triggered the load. The autocmd got registered, but never
+triggered for that buffer.
+
+Reproduction: 0 extmarks placed on first open (instead of the expected 6+).
+
+Fix: added `FileType` to the autocmd triggers AND a one-shot sweep in
+`_setup_autocmds()` that walks `vim.api.nvim_list_bufs()` and renders any
+already-loaded `*.md` buffer. This handles the load-after-open case cleanly.
+
+### [render.lua] conceal_lines + cursor → rendered output disappears on navigate
+
+On Neovim 0.11+ the old code used the `conceal_lines = ""` extmark to hide
+the query block and placed a `virt_lines_above` extmark to show the rendered
+output above it. This works visually — until the cursor enters the block.
+
+Neovim's default behavior: when the cursor is on a concealed line,
+`concealcursor` determines whether to reveal that specific line for editing.
+The default `concealcursor` is empty → every mode reveals. So as soon as the
+user navigates into the block, the concealed lines become visible one at a
+time, causing the clean rendered overlay to flicker / tear. There's a
+secondary problem too: virt_lines attached to a concealed line have known
+interaction bugs on 0.11.x (Neovim issues #32744 and #33033).
+
+Fix: changed the default render strategy from "conceal" to **"inline"** —
+keep the source visible, place virt_lines below the closing fence. Works
+identically on every Neovim version, cursor navigation is natural, users
+can edit the query source in place.
+
+The conceal strategy is still available as an opt-in via
+`render_strategy = "conceal"` for users who understand the tradeoffs and
+are on Nvim 0.11+ with `conceallevel >= 2`.
+
+Also fixed a small positional bug: the previous inline fallback attached
+virt_lines to `block.start` (the opening fence) instead of `block.finish`
+(the closing fence). The rendered output now appears immediately below the
+closing fence, which is where a reader's eye naturally expects results.
+
+### New test coverage
+
+| Suite                       | Tests | Purpose                                      |
+|-----------------------------|-------|----------------------------------------------|
+| `smoke_render.lua`          | 7     | Render-strategy defaults + lazy-load sweep   |
+
+### Test coverage at end of session 10
+
+| Suite                             | Tests |
+|-----------------------------------|-------|
+| test_filter.lua      (Lua 5.1)    | 56    |
+| test_task.lua        (Lua 5.1)    | 24    |
+| test_task2.lua       (Lua 5.1)    | 34    |
+| test_sort.lua        (Lua 5.1)    |  9    |
+| test_recurrence.lua  (Lua 5.1)    | 25    |
+| smoke.lua            (real Nvim)  | 40    |
+| smoke2.lua           (real Nvim)  | 42    |
+| smoke_integration.lua (real Nvim) | 13    |
+| smoke_workflow.lua   (real Nvim)  | 84    |
+| smoke_render.lua     (real Nvim)  |  7    |
+| **Total**                         | **334** |

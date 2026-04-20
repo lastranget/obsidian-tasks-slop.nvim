@@ -203,14 +203,33 @@ function M.render_buffer(bufnr)
   local vault = require("nvim-tasks.vault")
   local all_tasks = vault.scan()
 
-  local use_line_conceal = supports_conceal_lines() and vim.wo.conceallevel >= 2
-  local hl = config.get().highlights
+  -- Two rendering strategies:
+  --
+  --   "inline"  (default): virt_lines below the block, source stays visible.
+  --             Works on every Neovim version. Cursor navigation is natural —
+  --             you can move through and edit the query source.
+  --
+  --   "conceal" (opt-in on 0.11+): hide the block entirely via `conceal_lines`
+  --             and render output ABOVE the block. Prettier when looking but
+  --             fragile: Neovim reveals concealed lines when the cursor is on
+  --             them (by default), so the rendered output flickers as you
+  --             navigate. Requires `conceallevel >= 2` to function at all.
+  --
+  -- The old default was "conceal" but it had too many rough edges (cursor-
+  -- reveal, virt_lines + conceal interaction bugs on 0.11.x — see nvim
+  -- issues #32744 / #33033). Default is now "inline".
+  local cfg = config.get()
+  local strategy = cfg.render_strategy or "inline"
+  local use_conceal = strategy == "conceal"
+    and supports_conceal_lines()
+    and vim.wo.conceallevel >= 2
+  local hl = cfg.highlights
 
   for _, block in ipairs(blocks) do
     local result = query_mod.run(block.query_lines, all_tasks)
     local virt = build_virt_lines(result, block)
 
-    if use_line_conceal then
+    if use_conceal then
       -- Conceal the entire block (opening fence, query body, closing fence).
       -- The virt_lines attached to block.start take its visual place.
       for i = block.start, block.finish do
@@ -219,21 +238,18 @@ function M.render_buffer(bufnr)
         })
       end
       if #virt > 0 then
-        -- virt_lines_above = true: rendered above block.start, which is itself
-        -- concealed. The combined effect is "rendered output sits where the
-        -- block was." Requires the post-0.11 fix for virt_lines + conceal_lines
-        -- interaction (issues #32744 / #33033), which shipped in the 0.11 line.
         pcall(vim.api.nvim_buf_set_extmark, bufnr, ns, block.start, 0, {
           virt_lines = virt,
           virt_lines_above = true,
         })
       end
     else
-      -- Fallback: keep the query source visible and place the rendered output
-      -- as virt_lines below the block. Draw a border on the fence lines so the
-      -- user can see what nvim-tasks is adding.
+      -- Inline: keep the query source visible; place the rendered output
+      -- as virt_lines below the closing fence. Draw a subtle border on the
+      -- fence lines so the user can see where the plugin is contributing
+      -- virtual content.
       if #virt > 0 then
-        pcall(vim.api.nvim_buf_set_extmark, bufnr, ns, block.start, 0, {
+        pcall(vim.api.nvim_buf_set_extmark, bufnr, ns, block.finish, 0, {
           virt_lines = virt, virt_lines_above = false,
         })
       end

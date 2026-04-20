@@ -190,12 +190,22 @@ Hideable: `priority`, `recurrence rule`, `on completion`, `start date`, `schedul
 
 ## Rendering
 
-Rendered query blocks display the results as virtual lines while hiding the original `tasks` source.
-
-- **Neovim 0.11+** with `:setlocal conceallevel=2` (or `3`): the entire `` ```tasks ... ``` `` block is concealed via the `conceal_lines` extmark property, and the rendered output takes its visual place.
-- **Older Neovim or `conceallevel=0`/`1`**: the source stays visible; the rendered output is appended below the block with a labelled border on the fence lines. Set `conceallevel=2` in a `markdown` ftplugin to get the cleaner mode.
+By default, rendered output appears below each `tasks` block and the source stays visible. This keeps cursor navigation predictable — you can move through and edit query source in place — and works on every Neovim version.
 
 `:TasksToggleRender` flips between rendered and raw edit view.
+
+### Strategy option
+
+`render_strategy` (default `"inline"`) controls how rendered output is placed:
+
+- **`"inline"`** — keeps the source visible; places virt_lines below the closing fence with a subtle border overlay on the fence lines. Works on every Neovim version and handles cursor navigation gracefully.
+- **`"conceal"`** — hides the block entirely using the `conceal_lines` extmark and places rendered output above where the block used to be. Only works on Neovim 0.11+ with `:setlocal conceallevel=2` (or `3`). Looks cleaner, but Neovim reveals concealed lines when the cursor is on them by default (`concealcursor` empty), so output flickers as you navigate into the block. Opt in only if you're comfortable editing the query source through a `:TasksToggleRender` toggle.
+
+```lua
+require("nvim-tasks").setup({
+  render_strategy = "inline",  -- default; use "conceal" for hide-on-0.11
+})
+```
 
 ## Configuration
 
@@ -204,11 +214,12 @@ require("nvim-tasks").setup({
   vault_paths = {},                           -- empty = auto-detect from obsidian.nvim → cwd
   global_filter = "",                         -- only tasks containing this string
   global_query = "",                          -- prepended to all queries
-  recurrence_position = "below",              -- "above" or "below"
+  recurrence_position = "above",              -- "above" or "below" (matches obsidian-tasks)
   remove_scheduled_on_recurrence = false,     -- drop scheduled date on next occurrence
   auto_created_date = true,
   auto_done_date = true,
   render_on_load = true,
+  render_strategy = "inline",                 -- "inline" or "conceal" (see Rendering)
   emoji_aliases = { due = { "📆", "🗓" }, scheduled = { "⌛" } },
   statuses = {
     { symbol = " ", name = "Todo",        next = "x", type = "TODO" },
@@ -216,7 +227,7 @@ require("nvim-tasks").setup({
     { symbol = "X", name = "Done",        next = " ", type = "DONE" },
     { symbol = "/", name = "In Progress", next = "x", type = "IN_PROGRESS" },
     { symbol = "-", name = "Cancelled",   next = " ", type = "CANCELLED" },
-    { symbol = "h", name = "On Hold",     next = "x", type = "ON_HOLD" },
+    { symbol = "h", name = "On Hold",     next = " ", type = "ON_HOLD" },
     { symbol = "Q", name = "Non-Task",    next = "A", type = "NON_TASK" },
   },
   keymaps = {                                 -- set any to false to disable
