@@ -141,7 +141,7 @@ function M._run_query(query_str)
   local config = require("nvim-tasks.config")
   vault.invalidate()
   local lines = vim.split(query_str, ";")
-  local result = query.run(lines)
+  local result = query.run(lines, nil, { file_path = vim.api.nvim_buf_get_name(0) })
   local e = config.get().emojis
   local output = {}
   for _, err in ipairs(result.error_messages) do table.insert(output, "⚠ " .. err) end

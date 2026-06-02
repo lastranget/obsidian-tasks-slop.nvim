@@ -162,9 +162,26 @@ end
 -- the random sentinel; nil for unrecognised lines.
 
 function M.parse_sorter(line)
-  local l = vim.trim(line):lower()
-  local match = l:match("^sort by (.+)")
-  if not match then return nil end
+  local raw = vim.trim(line)
+  local l = raw:lower()
+  local rest_l = l:match("^sort by%s+(.+)$")
+  if not rest_l then return nil end
+
+  -- Custom JS sorter: `sort by function [reverse] <expr>`. Detect this BEFORE
+  -- the trailing-`reverse` stripping below, since `reverse` is a leading
+  -- keyword here and `reverse` may also appear inside the expression. The
+  -- expression is captured from the original-case line (JS is case-sensitive).
+  -- Returns a sentinel resolved by query.execute via js.lua.
+  local fexpr_l = rest_l:match("^function%s+(.+)$")
+  if fexpr_l then
+    local fexpr_raw = raw:sub(#raw - #fexpr_l + 1)
+    local reverse = false
+    local r = fexpr_l:match("^reverse%s+(.+)$")
+    if r then reverse = true; fexpr_raw = fexpr_raw:sub(#fexpr_raw - #r + 1) end
+    return { __js = "sort", expr = vim.trim(fexpr_raw), reverse = reverse }
+  end
+
+  local match = rest_l
   local rev = match:match("reverse%s*$") ~= nil
   if rev then match = vim.trim(match:gsub("reverse%s*$", "")) end
 

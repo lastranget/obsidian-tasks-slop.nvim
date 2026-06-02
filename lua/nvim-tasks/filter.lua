@@ -66,6 +66,31 @@ function M._date_filter(ll, kw, field, getter, opts)
     end
   end
 
+  -- Inclusive "in <date range>" predicate: a date passes if it falls on or
+  -- between range.start and range.finish (matches obsidian-tasks'
+  -- DateField.buildFilterFunction default/`in` case).
+  local function mk_range(range)
+    if any_of then
+      return function(t)
+        local vs = getter(t) or {}
+        if #vs == 0 then return missing end
+        for _, v in ipairs(vs) do
+          local d = date_mod.parse(v)
+          if d and date_mod.on_or_after(d, range.start) and date_mod.on_or_before(d, range.finish) then
+            return true
+          end
+        end
+        return false
+      end
+    end
+    return function(t)
+      local v = getter(t)
+      if not v then return missing end
+      local d = date_mod.parse(v)
+      return d and date_mod.on_or_after(d, range.start) and date_mod.on_or_before(d, range.finish) or false
+    end
+  end
+
   local oob = ll:match("^" .. kw .. " on or before (.+)")
     if oob then local t = tp(oob); if t then return mk("ob", t) end end
   local ooa = ll:match("^" .. kw .. " on or after (.+)")
@@ -85,34 +110,22 @@ function M._date_filter(ll, kw, field, getter, opts)
   local ir  = ll:match("^" .. kw .. " in (.+)")
   if ir then
     local range = M._date_range(ir)
-    if range then
-      if any_of then
-        return function(t)
-          local vs = getter(t) or {}
-          if #vs == 0 then return missing end
-          for _, v in ipairs(vs) do
-            local d = date_mod.parse(v)
-            if d and date_mod.on_or_after(d, range.start) and date_mod.on_or_before(d, range.finish) then
-              return true
-            end
-          end
-          return false
-        end
-      end
-      return function(t)
-        local v = getter(t)
-        if not v then return missing end
-        local d = date_mod.parse(v)
-        return d and date_mod.on_or_after(d, range.start) and date_mod.on_or_before(d, range.finish) or false
-      end
-    end
+    if range then return mk_range(range) end
   end
-  -- Keyword-less form: "due 2026-04-20" == "due on 2026-04-20".
-  -- Matches obsidian-tasks' DateField.filterRegExp which allows the keyword
-  -- group to be empty. Only ISO dates are accepted here; relative/natural
-  -- date parsing in Lua is too ambiguous to bind implicitly.
-  local bare = ll:match("^" .. kw .. " (%d%d%d%d%-%d%d%-%d%d)$")
-  if bare then local t = tp(bare); if t then return mk("e", t) end end
+  -- Keyword-less form. obsidian-tasks' DateField.filterRegExp makes the
+  -- operator optional and, when it is omitted, defaults to the inclusive
+  -- "in <date range>" behaviour. So `created last week` == `created in last
+  -- week`, and `due 2026-01-01 2026-01-31` works without an explicit `in`.
+  -- The remainder is interpreted as a date range first, then (for a single
+  -- ISO date) as `on <date>`. Relative/natural single dates are still not
+  -- bound implicitly here — Lua date parsing is too ambiguous for that.
+  local rest = ll:match("^" .. kw .. " (.+)$")
+  if rest then
+    local range = M._date_range(rest)
+    if range then return mk_range(range) end
+    local bare = rest:match("^(%d%d%d%d%-%d%d%-%d%d)$")
+    if bare then local t = tp(bare); if t then return mk("e", t) end end
+  end
   return nil
 end
 
@@ -441,6 +454,17 @@ function M.parse_filter(line)
   local l = vim.trim(line)
   local ll = l:lower()
   if ll == "" then return nil end
+
+  -- Custom JS filter: `filter by function <expr>`. Returns a sentinel that
+  -- query.execute resolves in one batched call to the external JS engine
+  -- (see js.lua). The expression is captured from the original-case line
+  -- because JavaScript is case-sensitive.
+  do
+    local expr_l = ll:match("^filter by function%s+(.+)$")
+    if expr_l then
+      return { __js = "filter", expr = vim.trim(l:sub(#l - #expr_l + 1)) }
+    end
+  end
 
   if ll == "done" then return function(t) return task_mod.is_done(t) end end
   if ll == "not done" then return function(t) return not task_mod.is_done(t) end end

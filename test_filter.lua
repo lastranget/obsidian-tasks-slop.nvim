@@ -111,6 +111,38 @@ check("starts before 2030-01-01 (present, earlier)",
 check("starts before 2030-01-01 (present, later)",
   eval("starts before 2030-01-01", task{start_date="2099-01-01"}), false)
 
+-- Keyword-less date ranges: "created last week" / "created this week" use the
+-- implicit "in <range>" form (operator omitted), matching obsidian-tasks.
+local date_mod = require("nvim-tasks.date")
+local today = date_mod.today()
+local in_this_week = date_mod.format(today)               -- today is always in this week
+local in_last_week = date_mod.format(date_mod.add_days(today, -7)) -- 7 days back is always in last week
+check("created this week (created today)",
+  eval("created this week", task{created=in_this_week}), true)
+check("created this week (created last week -> false)",
+  eval("created this week", task{created=in_last_week}), false)
+check("created this week (missing -> false)",
+  eval("created this week", task{}), false)
+check("created last week (created last week)",
+  eval("created last week", task{created=in_last_week}), true)
+check("created last week (created today -> false)",
+  eval("created last week", task{created=in_this_week}), false)
+-- The implicit form also works for other date fields and absolute ranges.
+check("due this week (due today)",
+  eval("due this week", task{due=in_this_week}), true)
+check("due 2026-01-01 2026-12-31 (in absolute range, no 'in')",
+  eval("due 2026-01-01 2026-12-31", task{due="2026-06-15"}), true)
+check("due 2026-01-01 2026-12-31 (out of absolute range)",
+  eval("due 2026-01-01 2026-12-31", task{due="2027-01-01"}), false)
+-- Bare single ISO date still means "on <date>".
+check("due 2026-06-15 (bare == on)",
+  eval("due 2026-06-15", task{due="2026-06-15"}), true)
+check("due 2026-06-15 (bare == on, miss)",
+  eval("due 2026-06-15", task{due="2026-06-16"}), false)
+-- happens with implicit range (doc example "happens this week").
+check("happens this week (scheduled today)",
+  eval("happens this week", task{scheduled=in_this_week}), true)
+
 -- happens: any of due/scheduled/start
 check("happens before 2030-01-01 (due earlier)",
   eval("happens before 2030-01-01", task{due="2020-01-01"}), true)

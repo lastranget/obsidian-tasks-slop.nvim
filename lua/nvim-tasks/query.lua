@@ -14,6 +14,7 @@ local sort_mod   = require("nvim-tasks.sort")
 local group_mod  = require("nvim-tasks.group")
 local vault      = require("nvim-tasks.vault")
 local config     = require("nvim-tasks.config")
+local js_mod     = require("nvim-tasks.js")
 local M = {}
 
 -- ---------------------------------------------------------------------------
@@ -164,7 +165,99 @@ local function apply_group_limit(groups, group_limit)
   end
 end
 
-function M.execute(query, tasks)
+-- Resolve every `... by function` sentinel (produced by the filter/sort/group
+-- parsers) in one batched call to the external JS engine, replacing each with a
+-- concrete predicate / keyer / grouper backed by the per-task results. On any
+-- failure (no engine, engine error, or a per-instruction expression error) the
+-- affected instruction degrades safely — filters match nothing, groups show an
+-- error heading — and a message is appended to `query.errors`. No-op (and no
+-- engine probe) when the query contains no function instructions.
+local function resolve_js(query, tasks, ctx)
+  local instructions = {}
+  local function add(kind, expr)
+    local id = #instructions + 1
+    instructions[id] = { id = id, kind = kind, expr = expr }
+    return id
+  end
+
+  local filter_ids, sort_ids, group_ids = {}, {}, {}
+  for i, f in ipairs(query.filters) do
+    if type(f) == "table" and f.__js == "filter" then filter_ids[i] = add("filter", f.expr) end
+  end
+  for i, s in ipairs(query.sorters) do
+    if type(s) == "table" and s.__js == "sort" then sort_ids[i] = add("sort", s.expr) end
+  end
+  for i, g in ipairs(query.groupers) do
+    if type(g) == "table" and g.__js == "group" then group_ids[i] = add("group", g.expr) end
+  end
+  if #instructions == 0 then return end
+
+  -- Map each task to the index we send it to the engine at, so per-task result
+  -- arrays can be looked up by task identity.
+  local idx = {}
+  for i, t in ipairs(tasks) do idx[t] = i end
+
+  local results, errors
+  if js_mod.available() then
+    results, errors = js_mod.evaluate(instructions, tasks, ctx)
+  else
+    errors = { _engine = "no JS engine found — install Deno (recommended), "
+      .. "or configure require('nvim-tasks').setup{ js_engine = 'node' }" }
+  end
+  results = results or {}
+  errors = errors or {}
+
+  local NIL = vim.NIL
+  local function value(id, t)
+    local arr = results[id]
+    if not arr then return nil end
+    local v = arr[idx[t]]
+    if v == NIL then return nil end
+    return v
+  end
+
+  local seen = {}
+  local function record(msg)
+    if not msg or seen[msg] then return end
+    seen[msg] = true
+    table.insert(query.errors, msg)
+  end
+  if errors._engine then record("custom function: " .. errors._engine) end
+  if errors._fatal then record("custom function: " .. errors._fatal) end
+
+  for i, _ in pairs(filter_ids) do
+    local id = filter_ids[i]
+    if errors[id] then record(errors[id]) end
+    local ok_engine = results[id] ~= nil
+    query.filters[i] = function(t)
+      if not ok_engine then return false end
+      return value(id, t) == true
+    end
+  end
+
+  for i, _ in pairs(sort_ids) do
+    local id, spec = sort_ids[i], query.sorters[i]
+    if errors[id] then record(errors[id]) end
+    query.sorters[i] = { key = function(t) return value(id, t) end, reverse = spec.reverse }
+  end
+
+  for i, _ in pairs(group_ids) do
+    local id, spec = group_ids[i], query.groupers[i]
+    if errors[id] then record(errors[id]) end
+    local ok_engine = results[id] ~= nil
+    query.groupers[i] = {
+      reverse = spec.reverse,
+      fn = function(t)
+        if not ok_engine then return { "Error: JS engine unavailable" } end
+        local v = value(id, t)
+        if v == nil then return {} end -- null group → task omitted
+        return v
+      end,
+    }
+  end
+end
+
+function M.execute(query, tasks, ctx)
   tasks = tasks or vault.scan()
   local cfg = config.get()
 
@@ -175,6 +268,9 @@ function M.execute(query, tasks)
     if #query.sorters  == 0 then query.sorters  = gq.sorters  end
     if #query.groupers == 0 then query.groupers = gq.groupers end
   end
+
+  -- Resolve any custom-function (`... by function`) instructions before use.
+  resolve_js(query, tasks, ctx)
 
   -- Filter. Each predicate receives (task, all_tasks) so dependency/blocking
   -- filters can reach into the full population.
@@ -200,8 +296,8 @@ function M.execute(query, tasks)
   }
 end
 
-function M.run(lines, tasks)
-  return M.execute(M.parse(lines), tasks)
+function M.run(lines, tasks, ctx)
+  return M.execute(M.parse(lines), tasks, ctx)
 end
 
 return M

@@ -29,6 +29,12 @@ M.defaults = {
   auto_created_date = true,
   auto_done_date = true,
   render_on_load = true,
+  -- `filter/sort/group by function` custom-JS support. `js_engine` selects the
+  -- external engine command; nil = auto-detect (deno > bun > node). Deno is
+  -- recommended: a single sandboxed binary. `js_harness_path` overrides the
+  -- bundled harness location (normally derived from the plugin install path).
+  js_engine = nil,
+  js_harness_path = nil,
   keymaps = {
     toggle_done = "<C-CR>", toggle_render = "<leader>otr", create_task = "<leader>otc",
     set_priority = "<leader>otp", set_due_date = "<leader>otd", set_scheduled = "<leader>ots",

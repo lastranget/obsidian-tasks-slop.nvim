@@ -339,9 +339,12 @@ function M.render_buffer(bufnr)
   table.sort(blocks, function(a, b) return a.start > b.start end)
 
   local blocks_state = {}
+  -- Context for custom-function queries: the file the query block lives in,
+  -- exposed to expressions as `query.file.*`.
+  local query_ctx = { file_path = vim.api.nvim_buf_get_name(bufnr) }
 
   for _, block in ipairs(blocks) do
-    local result = query_mod.run(block.query_lines, all_tasks)
+    local result = query_mod.run(block.query_lines, all_tasks, query_ctx)
     local output_lines, task_origins = build_block_output(result)
 
     -- Save original source before replacing.

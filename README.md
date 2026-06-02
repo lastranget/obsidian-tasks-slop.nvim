@@ -12,6 +12,31 @@ Built by auditing the original TypeScript source. Parsing, serialization, urgenc
 | [snacks.nvim](https://github.com/folke/snacks.nvim) | Picker, input prompts, notifications | **Yes** |
 | [obsidian.nvim](https://github.com/obsidian-nvim/obsidian.nvim) | Auto-detects vault path from workspace config | Optional (auto-detected) |
 | [render-markdown.nvim](https://github.com/MeanderingProgrammer/render-markdown.nvim) | Coordinates to avoid rendering conflicts | Optional (auto-detected) |
+| A JavaScript engine (**Deno** / Node / Bun) | Evaluates `filter/sort/group by function` expressions | Optional — only for custom functions |
+
+### JavaScript engine (for `... by function`)
+
+Custom-function queries are evaluated by an external JS engine. Everything else
+works without one. **Deno is recommended** — a single sandboxed binary, run with
+no permission flags, so expressions pulled from your notes can't touch the
+filesystem, network, or processes.
+
+```sh
+# Deno (recommended)
+curl -fsSL https://deno.land/install.sh | sh      # macOS/Linux
+# or: brew install deno  |  winget install DenoLand.Deno  |  scoop install deno
+```
+
+Node (`node`) and Bun (`bun`) also work if you already have them. The engine is
+auto-detected in the order **deno → bun → node**; override with:
+
+```lua
+require("nvim-tasks").setup({ js_engine = "node" })  -- or "deno" / "bun" / an absolute path
+```
+
+Verify it works (after installing): from the plugin directory run
+`nvim -l test_js_engine.lua` — it prints the detected engine and runs a
+round-trip check (or `SKIP` if none is found).
 
 ## Installation
 
@@ -178,7 +203,42 @@ Queries without an explicit `sort by` automatically sort by status-type, urgency
 
 ### Grouping
 
-`group by <field>` — Available: `filename`, `folder`, `root`, `path`, `backlink`, `heading`, `priority`, `status`, `status.name`, `status.type`, `recurring`, `recurrence`, `due`, `scheduled`, `start`, `created`, `done`, `cancelled`, `happens`, `tags`, `id`, `urgency`
+`group by <field> [reverse]` — Available: `filename`, `folder`, `root`, `path`, `backlink`, `heading`, `priority`, `status`, `status.name`, `status.type`, `recurring`, `recurrence`, `due`, `scheduled`, `start`, `created`, `done`, `cancelled`, `happens`, `tags`, `id`, `urgency`
+
+### Custom functions (`filter / sort / group by function`)
+
+The official plugin lets you write JavaScript expressions over a `task` (and
+`query`) object:
+
+```tasks
+filter by function task.tags.length > 1
+sort by function reverse task.urgency
+group by function task.due.format('YYYY-MM') || 'No due date'
+```
+
+Neovim has no JavaScript engine, so these expressions are evaluated by an
+**external JS engine** (see [Dependencies](#dependencies)). Evaluation is
+**batched** — one engine invocation per query block, over all candidate tasks —
+and the rest of the plugin works normally whether or not an engine is installed:
+only `... by function` instructions need it, and they show a clear error if none
+is found.
+
+Supported surface mirrors obsidian-tasks: `task.description`,
+`task.descriptionWithoutTags`, `task.tags`, `task.priorityName`,
+`task.priorityNumber`, `task.urgency`, `task.isDone`, `task.isRecurring`,
+`task.recurrenceRule`, `task.id`, `task.dependsOn`, `task.heading`,
+`task.status.{symbol,name,type,nextSymbol}`, `task.file.{path,filename,
+filenameWithoutExtension,folder,root,pathWithoutExtension}`, the date fields
+`task.{due,start,scheduled,created,done,cancelled,happens}` as `TasksDate`
+objects (`.format()`, `.formatAsDate()`, `.category`, `.fromNow`, `.moment`),
+a global `moment()`, and `query.file.*`. Return-value rules also match: filters
+must return a boolean, sort keys are number/string/boolean/null, and groups are
+a string, number, `null` (omit the task), or an array of strings (multiple
+groups). Date formatting implements the moment tokens used in the docs; rare
+tokens echo literally.
+
+> ⚠️ This is the one feature that needs an external runtime. See
+> [Dependencies](#dependencies) to install one (Deno recommended).
 
 ### Layout
 
@@ -327,18 +387,26 @@ lua/nvim-tasks/
 ├── vault.lua       plenary.scandir + plenary.job (ripgrep) + plenary.path
 ├── filter.lua      All filters: dates, text, regex, status types, blocking/blocked
 ├── sort.lua        All sort fields including urgency, random, tag N
-├── group.lua       All group fields including backlink, root, urgency
-├── query.lua       Parser with global query merging, all_tasks context
+├── group.lua       All group fields including backlink, root, urgency; reverse + multi-group
+├── js.lua          Custom-function (`... by function`) engine bridge + task serialization
+├── query.lua       Parser with global query merging, all_tasks context, JS batching
 ├── render.lua      Extmark rendering, render-markdown.nvim coordination
 ├── toggle.lua      Toggle done for tasks/checklists/lists/plain text
 └── ui.lua          Snacks picker, input, notify; sequential wizard; vault search
+
+js/
+├── harness.mjs       Runtime-agnostic JS harness: task/query object model + minimal moment
+└── harness.test.mjs  Self-test for the harness (run with deno/node/bun)
 ```
 
 ## Known Limitations
 
-- `filter/sort/group by function` (JS expressions) — not implemented
+- `filter/sort/group by function` (JS expressions) — **implemented** via an external
+  JS engine (see [Dependencies](#javascript-engine-for--by-function)); requires
+  Deno/Node/Bun installed, and date formatting covers the documented moment tokens
 - Placeholder expansion (`{{query.file.path}}`) — not implemented
 - Presets (`preset my_preset`) — not implemented
+- Numbered date ranges (`2022-W14`, `2023-10`, `2023-Q4`, `2023`) — not implemented
 - Date parsing uses `YYYY-MM-DD` + relatives — not full chrono-style natural language
 - Recurrence covers common patterns but not full RFC 5545 rrule spec
 
