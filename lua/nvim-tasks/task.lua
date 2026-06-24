@@ -226,13 +226,12 @@ function M.urgency(task)
   return u
 end
 
---- Locate every ```tasks code block in a buffer.
+--- Locate every ```tasks code block in a list of lines.
 ---
---- Returns a list of `{ start, finish, query_lines }` tables with 0-indexed
---- line numbers for the opening and closing fences. Nested ``` fences are
---- not supported (same as obsidian-tasks and Obsidian itself).
-function M.find_query_blocks(bufnr)
-  local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+--- Editor-independent core of `find_query_blocks` — takes raw lines so it can
+--- be used outside Neovim buffers (e.g. headless/library callers that read a
+--- file with `vim.fn.readfile`). Returns the same shape as `find_query_blocks`.
+function M.find_query_blocks_in_lines(lines)
   local blocks = {}
   local in_block = false
   local block_start = nil
@@ -255,6 +254,15 @@ function M.find_query_blocks(bufnr)
     end
   end
   return blocks
+end
+
+--- Locate every ```tasks code block in a buffer.
+---
+--- Returns a list of `{ start, finish, query_lines }` tables with 0-indexed
+--- line numbers for the opening and closing fences. Nested ``` fences are
+--- not supported (same as obsidian-tasks and Obsidian itself).
+function M.find_query_blocks(bufnr)
+  return M.find_query_blocks_in_lines(vim.api.nvim_buf_get_lines(bufnr, 0, -1, false))
 end
 
 return M
