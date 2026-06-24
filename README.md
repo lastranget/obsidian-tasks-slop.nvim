@@ -375,6 +375,43 @@ require("nvim-tasks").setup({
 | `:TasksUndo` | Undo the last rendered-dispatch edit (single-slot, per-session) |
 | `:TasksQuery <query>` | Ad-hoc query (`;` as line separator) |
 
+## Headless / programmatic use
+
+You can run a query without a UI — useful for cron jobs, status bars, or e-ink
+dashboards that just want a number. The query engine and vault scan don't need
+`setup()`, snacks, or obsidian.nvim; require the modules directly and point the
+scanner at a vault with `vault_paths`.
+
+```lua
+-- count.lua — run as: nvim --clean -l count.lua <vault> <query-file>
+local plugins = vim.fn.stdpath("data") .. "/lazy"
+vim.opt.runtimepath:prepend(plugins .. "/obsidian-tasks-slop.nvim")
+vim.opt.runtimepath:prepend(plugins .. "/plenary.nvim")
+
+local vault, file = arg[1], arg[2]
+require("nvim-tasks.config").setup({ vault_paths = { vault } })
+
+local task     = require("nvim-tasks.task")
+local query    = require("nvim-tasks.query")
+local vaultmod = require("nvim-tasks.vault")
+
+-- Load the note into a scratch buffer and use the plugin's own block finder.
+local buf = vim.api.nvim_create_buf(false, true)
+vim.api.nvim_buf_set_lines(buf, 0, -1, false, vim.fn.readfile(file))
+vim.api.nvim_buf_set_name(buf, file)
+
+local blocks = task.find_query_blocks(buf)          -- document order; [1] = first block
+local result = query.run(blocks[1].query_lines,     -- { groups, total_count, error_messages, query }
+                         vaultmod.scan(true),        -- synchronous full-vault scan
+                         { file_path = file })
+io.write(tostring(result.total_count))              -- same N as the "*── N tasks ──*" banner
+```
+
+The stable surface this leans on: `config.setup{vault_paths}`,
+`task.find_query_blocks(buf)` → `{ start, finish, query_lines }` in document
+order, `vault.scan(force)` (synchronous), and `query.run(lines, tasks, ctx)` →
+`{ total_count, groups, error_messages, query }`.
+
 ## Architecture
 
 ```
