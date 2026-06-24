@@ -281,6 +281,7 @@ The block is replaced with:
 - **Group headings are level-4 (`####`)** so your existing treesitter fold-expr picks them up — each group folds under its heading automatically. No extra fold config needed.
 - **Task lines are real markdown** (`- [ ] desc ⏫ 📅 date [[file#heading]]`). render-markdown.nvim styles them just like any other task in your vault, so the visual is consistent.
 - **Backlinks are Obsidian wiki-links.** `gf`, obsidian.nvim's follow-link, and any other Markdown-aware navigation jumps to the source file and heading.
+- **Injected identifiers are escaped.** Backlink filenames/headings and group-heading labels are run through inline-markdown escaping (the delimiters `*`, `_`, `~`, backtick, and `\`) so a name like `_my_note_` isn't re-parsed by render-markdown as emphasis — an unbalanced `_`/`*` would otherwise leak italics across the rest of the rendered list. Task **descriptions are left as-is**, so intentional markdown in your task text still renders (matching Obsidian).
 
 ### Interactivity
 

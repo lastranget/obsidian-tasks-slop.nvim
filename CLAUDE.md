@@ -14,8 +14,8 @@ silent.
   `ob-sync-safe` that every 5 min rebuilds `~/vaults/Main/eink/display_shared.json`
   (header text from `eink/header.md`; `nosync_count` = count of the first
   ```` ```tasks ```` block in `views/work tasks moc.md`, mirrored to
-  `eink/nosync_count.md`; `eink_tasks` = every task matching `(path includes
-  nosync) AND (tag includes #eink)`).
+  `eink/nosync_count.md`; `eink_tasks` = every **incomplete** task matching
+  `(path includes nosync) AND (tag includes #eink) AND (not done)`).
 - **How it calls in:** `nvim --clean -l <helper.lua> …`, prepending the plugin +
   plenary dirs to `runtimepath`, then `require("nvim-tasks.lib")`. It is
   **lib-only** (no fallback to internal modules), so the loaded install must
