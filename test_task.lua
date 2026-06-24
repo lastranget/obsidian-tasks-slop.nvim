@@ -132,5 +132,23 @@ do
     s, "- [ ] Buy milk #urgent #shopping")
 end
 
+-- escape_markdown: neutralize inline-markdown delimiters in injected text
+-- (backlink filenames/headings, group labels) so a `_`/`*`/etc. doesn't leak
+-- emphasis across the rendered list. Structural chars (# [ ]) stay intact.
+check("escape_markdown: leading-underscore filename",
+  task.escape_markdown("_eink_test"), "\\_eink\\_test")
+check("escape_markdown: intraword underscore",
+  task.escape_markdown("count_tokens"), "count\\_tokens")
+check("escape_markdown: asterisk, backtick, tilde",
+  task.escape_markdown("a*b`c~d"), "a\\*b\\`c\\~d")
+check("escape_markdown: backslash itself doubled",
+  task.escape_markdown("a\\b"), "a\\\\b")
+check("escape_markdown: leaves # [ ] untouched",
+  task.escape_markdown("file#Heading [x]"), "file#Heading [x]")
+check("escape_markdown: plain text unchanged",
+  task.escape_markdown("BioFinder Onboarding"), "BioFinder Onboarding")
+check("escape_markdown: empty string",
+  task.escape_markdown(""), "")
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 os.exit(failed == 0 and 0 or 1)

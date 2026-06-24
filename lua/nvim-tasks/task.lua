@@ -226,6 +226,18 @@ function M.urgency(task)
   return u
 end
 
+--- Backslash-escape the inline-markdown delimiters (`\ * _ ` ~`) in `s` so
+--- text the renderer injects — backlink filenames/headings and group labels —
+--- displays literally instead of being re-parsed (by render-markdown/treesitter)
+--- as emphasis/code/strikethrough. An unbalanced `_` or `*` in a filename (e.g.
+--- a leading-underscore note name) otherwise opens an emphasis run that leaks
+--- italics across the rest of the rendered list. Structural characters used by
+--- the wikilink syntax (`#`, `[`, `]`) are deliberately left untouched.
+function M.escape_markdown(s)
+  if not s or s == "" then return s end
+  return (s:gsub("[\\*_`~]", "\\%0"))
+end
+
 --- Locate every ```tasks code block in a list of lines.
 ---
 --- Editor-independent core of `find_query_blocks` — takes raw lines so it can

@@ -148,12 +148,12 @@ function M._run_query(query_str)
   table.insert(output, string.format("── %d task%s found ──", result.total_count, result.total_count == 1 and "" or "s"))
   table.insert(output, "")
   for _, grp in ipairs(result.groups) do
-    if grp.heading then table.insert(output, "### " .. grp.heading) end
+    if grp.heading then table.insert(output, "### " .. task_mod.escape_markdown(grp.heading)) end
     for _, t in ipairs(grp.tasks) do
       local p = { task_mod.is_done(t) and "- [x]" or "- [ ]", t.description }
       if t.priority then local em = e[t.priority]; if em then table.insert(p, em) end end
       if t.due then table.insert(p, e.due .. " " .. t.due) end
-      if t.file_path then table.insert(p, "(" .. vim.fn.fnamemodify(t.file_path, ":t:r") .. ")") end
+      if t.file_path then table.insert(p, "(" .. task_mod.escape_markdown(vim.fn.fnamemodify(t.file_path, ":t:r")) .. ")") end
       table.insert(output, table.concat(p, " "))
     end
     table.insert(output, "")

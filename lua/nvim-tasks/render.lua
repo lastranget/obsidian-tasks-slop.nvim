@@ -158,10 +158,15 @@ local function format_task_line(task, query_obj)
   if not hide["backlink"] and not hide["path"] and task.file_path and not short then
     local fn = vim.fn.fnamemodify(task.file_path, ":t:r")
     if fn and fn ~= "" then
+      -- Escape inline markdown in the link text: a filename/heading with `_` or
+      -- `*` would otherwise be re-parsed as emphasis and leak italics across the
+      -- rest of the rendered list. The link is for display only (navigation uses
+      -- the extmark origin via :TasksGoto), so escaping the target is fine.
+      local efn = task_mod.escape_markdown(fn)
       if task.preceding_header and task.preceding_header ~= "" then
-        table.insert(parts, "[[" .. fn .. "#" .. task.preceding_header .. "]]")
+        table.insert(parts, "[[" .. efn .. "#" .. task_mod.escape_markdown(task.preceding_header) .. "]]")
       else
-        table.insert(parts, "[[" .. fn .. "]]")
+        table.insert(parts, "[[" .. efn .. "]]")
       end
     end
   end
@@ -210,8 +215,9 @@ local function build_block_output(result)
     if grp.heading then
       -- Level-4 heading — deep enough that most notes don't use it, so
       -- treesitter fold-expr folds each group cleanly without disturbing
-      -- the document's own heading hierarchy.
-      table.insert(lines, "#### " .. grp.heading)
+      -- the document's own heading hierarchy. Escape inline markdown so a
+      -- group label from a filename/tag (e.g. with `_`) renders literally.
+      table.insert(lines, "#### " .. task_mod.escape_markdown(grp.heading))
     end
     for _, t in ipairs(grp.tasks) do
       table.insert(lines, format_task_line(t, result.query))
