@@ -201,8 +201,9 @@ local function resolve_js(query, tasks, ctx)
   if js_mod.available() then
     results, errors = js_mod.evaluate(instructions, tasks, ctx)
   else
-    errors = { _engine = "no JS engine found — install Deno (recommended), "
-      .. "or configure require('nvim-tasks').setup{ js_engine = 'node' }" }
+    errors = { _engine = "this query uses `… by function`, which needs a JavaScript "
+      .. "engine. Install Deno (recommended), Bun, or Node and reopen this note "
+      .. "— or set `js_engine` in setup()." }
   end
   results = results or {}
   errors = errors or {}
@@ -222,7 +223,7 @@ local function resolve_js(query, tasks, ctx)
     seen[msg] = true
     table.insert(query.errors, msg)
   end
-  if errors._engine then record("custom function: " .. errors._engine) end
+  if errors._engine then record(errors._engine) end
   if errors._fatal then record("custom function: " .. errors._fatal) end
 
   for i, _ in pairs(filter_ids) do

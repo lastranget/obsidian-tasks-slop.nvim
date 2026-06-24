@@ -320,7 +320,17 @@ do
     local r = query.run({ "filter by function task.priorityNumber === 1" }, tasks, {})
     check("degrade: filter matches nothing", r.total_count, 0)
     check("degrade: error recorded", #r.error_messages >= 1, true)
-    check("degrade: error mentions engine", r.error_messages[1]:find("JS engine", 1, true) ~= nil, true)
+    check("degrade: warns to install an engine",
+      r.error_messages[1]:find("JavaScript", 1, true) ~= nil, true)
+  end)
+
+  -- Scoping: a query WITHOUT any `… by function` instruction must NOT emit the
+  -- engine warning, even when no engine is installed (the engine is never
+  -- consulted). This is the "only warn when JS would actually be used" rule.
+  with_engine(false, function()
+    local r = query.run({ "not done", "sort by priority" }, tasks, {})
+    check("scoping: no engine warning for non-JS query", #r.error_messages, 0)
+    check("scoping: non-JS query still returns tasks", r.total_count >= 1, true)
   end)
 end
 
