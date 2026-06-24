@@ -375,12 +375,13 @@ require("nvim-tasks").setup({
 | `:TasksUndo` | Undo the last rendered-dispatch edit (single-slot, per-session) |
 | `:TasksQuery <query>` | Ad-hoc query (`;` as line separator) |
 
-## Headless / programmatic use
+## Headless / programmatic use (`nvim-tasks.lib`)
 
-You can run a query without a UI — useful for cron jobs, status bars, or e-ink
-dashboards that just want a number. The query engine and vault scan don't need
-`setup()`, snacks, or obsidian.nvim; require the modules directly and point the
-scanner at a vault with `vault_paths`.
+For cron jobs, status lines, or e-ink dashboards, use the library facade
+`require("nvim-tasks.lib")` — the editor-independent entry point. It touches
+only the engine (config, task, vault, query), so it needs plenary but **not**
+snacks, and it never registers commands/keymaps/autocmds. Requiring it has no
+effect on the interactive plugin, and `setup()` is not involved.
 
 ```lua
 -- count.lua — run as: nvim --clean -l count.lua <vault> <query-file>
@@ -389,34 +390,37 @@ vim.opt.runtimepath:prepend(plugins .. "/obsidian-tasks-slop.nvim")
 vim.opt.runtimepath:prepend(plugins .. "/plenary.nvim")
 
 local vault, file = arg[1], arg[2]
-require("nvim-tasks.config").setup({ vault_paths = { vault } })
+local lib = require("nvim-tasks.lib").setup({ vault_paths = { vault } })
 
-local task     = require("nvim-tasks.task")
-local query    = require("nvim-tasks.query")
-local vaultmod = require("nvim-tasks.vault")
+local tasks  = lib.scan(true)                          -- one synchronous scan, reused below
+local blocks = lib.find_blocks(vim.fn.readfile(file))  -- document order; [1] = first block
+io.write(tostring(lib.count(blocks[1].query_lines, { tasks = tasks })))
 
--- Load the note into a scratch buffer and use the plugin's own block finder.
-local buf = vim.api.nvim_create_buf(false, true)
-vim.api.nvim_buf_set_lines(buf, 0, -1, false, vim.fn.readfile(file))
-vim.api.nvim_buf_set_name(buf, file)
-
-local blocks = task.find_query_blocks(buf)          -- document order; [1] = first block
-local result = query.run(blocks[1].query_lines,     -- { groups, total_count, error_messages, query }
-                         vaultmod.scan(true),        -- synchronous full-vault scan
-                         { file_path = file })
-io.write(tostring(result.total_count))              -- same N as the "*── N tasks ──*" banner
+-- …or query directly by string and get the matching task objects:
+--   local hits = lib.tasks("(path includes nosync) AND (tag includes #eink)", { tasks = tasks })
 ```
 
-The stable surface this leans on: `config.setup{vault_paths}`,
-`task.find_query_blocks(buf)` → `{ start, finish, query_lines }` in document
-order, `vault.scan(force)` (synchronous), and `query.run(lines, tasks, ctx)` →
-`{ total_count, groups, error_messages, query }`.
+### `nvim-tasks.lib` API
+
+| Function | Returns |
+|----------|---------|
+| `setup(opts)` | configures the engine (`vault_paths`, statuses, …); returns the module for chaining |
+| `scan(force)` | synchronous list of all vault task objects (cached per process; `force` to rescan) |
+| `find_blocks(source)` | `source` is a bufnr **or** a list of lines → blocks `{ start, finish, query_lines }` in document order |
+| `run(query, opts)` | runs a query (a string or a list of instruction lines) → `{ groups, total_count, error_messages, query }` |
+| `count(query, opts)` | shorthand for `run(...).total_count` (the figure in the `*── N tasks ──*` banner) |
+| `tasks(query, opts)` | flat, de-duplicated list of matching task objects, in query sort order (also returns the raw result as a 2nd value) |
+
+`opts` is optional everywhere: `tasks` (a pre-scanned list, to avoid re-scanning
+between calls), `file_path` (exposed to the query as `ctx`/`query.file.*`), and
+`force_scan`.
 
 ## Architecture
 
 ```
 lua/nvim-tasks/
 ├── init.lua        Dependency checks, commands, keymaps, autocmds
+├── lib.lua         Editor-independent library facade (setup/scan/find_blocks/run/count/tasks)
 ├── config.lua      Defaults, obsidian.nvim vault auto-detection, status lookups
 ├── task.lua        Parse/serialize (iterative end-matching, alt emojis, urgency)
 ├── date.lua        Date arithmetic, comparison, smart relative parsing (+3d, today)

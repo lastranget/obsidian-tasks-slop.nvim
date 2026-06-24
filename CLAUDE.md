@@ -1,35 +1,38 @@
 This was matched with feature parity of https://github.com/obsidian-tasks-group/obsidian-tasks at commit 4ac2e5a
 
-## External consumer: vault Obsidian-Sync script (don't break this API)
+## Library facade & external consumer (don't break this API)
 
-A script **outside this repo** drives the plugin headlessly and depends on a
-small set of module functions as a stable, public-ish API. Treat these as a
-contract — if you rename/move them or change their shapes, update the consumer
-too, or you silently break it (it runs unattended, so failures are quiet).
+`lua/nvim-tasks/lib.lua` is the **supported, editor-independent library API**
+(`setup`/`scan`/`find_blocks`/`run`/`count`/`tasks`). It touches only the engine
+modules (config, task, vault, query) — never render/toggle/ui — so it needs
+plenary but not snacks, and registers no commands/keymaps/autocmds. It exists so
+headless consumers don't have to poke module internals. **Treat `lib`'s function
+names and shapes as a contract**: a real consumer runs unattended, so breakage is
+silent.
 
-- **Consumer:** `~/vaults/Main/scripts/sf_vm_obsidian_sync.sh` (a wrapper around
-  `ob-sync-safe` that, every 5 min, recomputes the task count of the first
-  ```` ```tasks ```` block in `~/vaults/Main/views/work tasks moc.md` and writes
-  the number to `~/vaults/Main/eink/nosync_count.md`).
-- **How it calls in:** `nvim --clean -l <helper.lua> <vault> <queryfile> <plugin_dir> <plenary_dir>`.
-  It `--clean`s (no user `init.lua`), prepends the plugin + plenary dirs to
-  `runtimepath`, then `require`s the modules directly. It never calls
-  `require("nvim-tasks").setup()` (avoids the snacks/init dependency), only the
-  pieces below.
+- **Consumer:** `~/vaults/Main/scripts/sf_vm_obsidian_sync.sh` — a wrapper around
+  `ob-sync-safe` that every 5 min rebuilds `~/vaults/Main/eink/display_shared.json`
+  (header text from `eink/header.md`; `nosync_count` = count of the first
+  ```` ```tasks ```` block in `views/work tasks moc.md`, mirrored to
+  `eink/nosync_count.md`; `eink_tasks` = every task matching `(path includes
+  nosync) AND (tag includes #eink)`).
+- **How it calls in:** `nvim --clean -l <helper.lua> …`, prepending the plugin +
+  plenary dirs to `runtimepath`, then `require("nvim-tasks.lib")`. It is
+  **lib-only** (no fallback to internal modules), so the loaded install must
+  carry `lib.lua` — bump it with `:Lazy update` after changing the plugin.
 
 ### The relied-on surface (keep backward compatible)
 
 | Call | Contract the consumer needs to keep working |
 |------|---------------------------------------------|
-| `require("nvim-tasks.config").setup{ vault_paths = { root } }` | `vault_paths` stays the way to point the scanner at a vault root without obsidian.nvim's `Obsidian` global being present. |
-| `require("nvim-tasks.task").find_query_blocks(bufnr)` | Returns a list of `{ start, finish, query_lines }` **in document order** — index `1` is the first ```` ```tasks ```` block. `query_lines` is the list of raw lines inside the fence. |
-| `require("nvim-tasks.vault").scan(force)` | **Synchronous** full-vault task scan (plenary.scandir). Must stay callable with no UI / no event-loop pumping after `config.setup`. |
-| `require("nvim-tasks.query").run(query_lines, tasks, ctx)` | Returns `{ groups, total_count, error_messages, query }`. `total_count` is the count shown in the rendered banner (`*── N tasks ──*`) — that number is what the consumer writes out. `ctx = { file_path = <queryfile> }`. |
+| `lib.setup{ vault_paths = { root } }` | points the scanner at a vault root without obsidian.nvim's `Obsidian` global; returns the module. |
+| `lib.scan(force)` | **synchronous** full-vault task scan; callable with no UI / event-loop pumping. |
+| `lib.find_blocks(source)` | `source` is a bufnr **or** a list of lines → `{ start, finish, query_lines }` **in document order** (index 1 = first ```` ```tasks ```` block). Lines path delegates to `task.find_query_blocks_in_lines`. |
+| `lib.run(query, opts)` / `lib.count(query, opts)` | `query` is a string or line list; result `{ groups, total_count, error_messages, query }`. `total_count` is the rendered-banner figure (`*── N tasks ──*`). `opts.tasks` reuses a scan; `opts.file_path` sets `ctx`. |
+| `lib.tasks(query, opts)` | flat, de-duplicated (by file_path+line) list of matching task objects. The consumer reads `description/raw/status_symbol/priority/due/scheduled/tags/file_path/line_number/preceding_header` and `task.is_done(t)` off these — keep those task fields stable too. |
 
-If you must change any of the above, prefer keeping a thin compatibility shim, or
-hunt down and update the helper Lua embedded in that shell script in the same
-change. The query the script reads happens to be the *first* block, so don't
-reorder/strip the count banner semantics of `total_count` either.
+If you must change any of the above, keep a thin shim, or update the helper Lua
+embedded in that shell script in the same change.
 
 See also `~/repos/tasks/CLAUDE.md` ("External consumers") for the workspace-level
 note.
